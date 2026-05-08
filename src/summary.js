@@ -1,6 +1,6 @@
 'use strict';
 
-const chalk = require('chalk').default;
+const chalk = require('chalk');
 
 function printSummary(aggregator, elapsedMs, flags = {}) {
   const counts = aggregator.counts();

@@ -28,8 +28,6 @@ async function fetchWithRetry(spec, opts, onChunk, onRetry) {
     if (signal?.aborted) throw Object.assign(new Error('fetch aborted'), { code: 'EABORT_SIGNAL' });
 
     try {
-      let bytes = 0;
-
       await pacote.tarball.stream(spec, (stream) => {
         // Destroy the stream immediately when the AbortController fires, so
         // in-flight streams don't keep pumping data into the aggregator after
@@ -48,7 +46,6 @@ async function fetchWithRetry(spec, opts, onChunk, onRetry) {
           const cleanup = () => { if (signal) signal.removeEventListener('abort', onAbortSignal); };
 
           stream.on('data', chunk => {
-            bytes += chunk.length;
             onChunk(chunk.length);
           });
 
@@ -69,7 +66,7 @@ async function fetchWithRetry(spec, opts, onChunk, onRetry) {
         });
       }, opts);
 
-      return { bytes, cached: bytes === 0 };
+      return;
     } catch (err) {
       if (signal?.aborted) throw err;
       if (isTransient(err) && attempt < MAX_RETRIES) {

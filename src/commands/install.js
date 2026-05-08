@@ -1,25 +1,43 @@
 'use strict';
 
-const chalk = require('chalk').default;
+const fs = require('fs');
+const chalk = require('chalk');
 const ArboristAdapter = require('../adapters/arborist');
 const { getArboristOpts } = require('../adapters/config');
 const { fetchWithRetry } = require('../adapters/pacote');
-const { probeAll } = require('../cache-probe');
+const { probeAll, tarballCachePath, resolveCacheDir } = require('../cache-probe');
 const DownloadAggregator = require('../aggregator');
 const ProgressRenderer = require('../progress');
 const { printSummary } = require('../summary');
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
+// Mutually-exclusive flag groups. npm rejects these combinations explicitly;
+// silently picking one and dropping the others would mask user intent.
+function validateFlags(flags) {
+  const saveFlags = [];
+  if (flags.saveDev) saveFlags.push('--save-dev');
+  if (flags.saveOptional) saveFlags.push('--save-optional');
+  if (flags.save === false) saveFlags.push('--no-save');
+  if (saveFlags.length > 1) {
+    console.error(`npmx: conflicting flags: ${saveFlags.join(' and ')} cannot be combined`);
+    process.exit(1);
+  }
+  if (flags.workspace && flags.workspaces) {
+    console.error('npmx: conflicting flags: --workspace and --workspaces cannot be combined');
+    process.exit(1);
+  }
+}
+
 async function install(packages, flags) {
+  validateFlags(flags);
   const start = Date.now();
 
-  // Pass no path/prefix in extraOpts — config.js routes --prefix to arborist.path
-  // (local install) or arborist.prefix (global install) as appropriate.
-  // Without --prefix, arborist defaults its path to process.cwd() which is correct.
+  // config.js routes --prefix to arborist.path (local) or arborist.prefix (global).
+  // Without --prefix, arborist defaults its path to process.cwd().
   const arboristOpts = getArboristOpts(flags);
 
-  // Step 1: Build ideal tree — animate a spinner since this can take several seconds.
+  // Step 1: Build ideal tree — animated spinner since this can take seconds.
   const arb = new ArboristAdapter(arboristOpts);
   let spinnerFrame = 0;
   const spinnerTimer = process.stdout.isTTY
@@ -34,65 +52,76 @@ async function install(packages, flags) {
     pkgSpecs = arb.extractPackageSpecs();
   } catch (err) {
     if (spinnerTimer) clearInterval(spinnerTimer);
-    process.stdout.write('\n');
+    if (process.stdout.isTTY) process.stdout.write('\n');
     console.error(`npmx: failed to resolve packages: ${err.message}`);
     process.exit(1);
   }
   if (spinnerTimer) clearInterval(spinnerTimer);
 
-  // Step 2: Cache probe (best-effort).
-  // Use arborist's fully-resolved options (includes registry, auth, etc.) for pacote calls.
-  // Probe with the resolved tarball URL — same identifier pacote uses to fetch.
+  // Step 2: Probe — fs.access on cacache content paths derived from each
+  // package's integrity hash. Always runs; fs.access on a missing file is
+  // microseconds, so guarding on cache-existence saved less than it cost.
   const pacoteOpts = arb.pacoteOpts;
-  const specNames = pkgSpecs.map(p => p.resolved || p.spec);
-  const { likelyCached, cachedSpecs } = await probeAll(specNames, pacoteOpts);
+  const { likelyCached, cachedSpecs } = await probeAll(pkgSpecs, pacoteOpts);
 
-  process.stdout.write(`\r  ${chalk.green('✔')}  Resolved ${pkgSpecs.length} packages (~${likelyCached} likely cached)\n`);
+  // \r overwrites the spinner — only meaningful in TTY mode. In piped output
+  // it gets written literally and garbles logs.
+  const lineStart = process.stdout.isTTY ? '\r' : '';
+  process.stdout.write(`${lineStart}  ${chalk.green('✔')}  Resolved ${pkgSpecs.length} packages (~${likelyCached} likely cached)\n`);
 
-  // Step 3: Register all specs in aggregator.
+  // Step 3: Register specs and short-circuit cached packages.
+  // The double-read fix: only call pacote.tarball.stream() for non-cached.
+  // Cached packages are read once, by reify, during extraction.
   const aggregator = new DownloadAggregator();
   for (const pkg of pkgSpecs) {
     aggregator.register(pkg.spec, { optional: pkg.optional, distSize: pkg.distSize });
   }
+  for (const pkg of pkgSpecs) {
+    if (cachedSpecs.has(pkg.spec)) {
+      aggregator.onFetchStart(pkg.spec);
+      aggregator.onEnd(pkg.spec, { cached: true });
+    }
+  }
 
-  // Step 4: Download phase with progress.
-  const renderer = new ProgressRenderer(aggregator);
-  renderer.start();
+  const toDownload = pkgSpecs.filter(p => !cachedSpecs.has(p.spec));
 
+  // Step 4: Download phase. Skipped on dry-run (semantic contract: no side
+  // effects, no network) and when there's nothing to download.
   const ac = new AbortController();
   let requiredFailure = null;
 
-  await Promise.all(pkgSpecs.map(async pkg => {
-    aggregator.onFetchStart(pkg.spec);
-    try {
-      // Use resolved URL so pacote fetches the exact tarball arborist planned,
-      // with no re-resolution. Falls back to name@version for unusual node types.
-      const fetchSpec = pkg.resolved || pkg.spec;
-      await fetchWithRetry(
-        fetchSpec,
-        { ...pacoteOpts, integrity: pkg.integrity, signal: ac.signal },
-        (len) => aggregator.onChunk(pkg.spec, len),
-        () => aggregator.onRetry(pkg.spec),
-      );
-      // Determine cached status from the probe result — bytes alone can't distinguish
-      // network vs disk-cache since pacote always streams the full tarball.
-      aggregator.onEnd(pkg.spec, { cached: cachedSpecs.has(fetchSpec) });
-    } catch (err) {
-      if (ac.signal.aborted) {
-        aggregator.onAbort(pkg.spec);
-        return;
-      }
-      if (pkg.optional) {
-        aggregator.onFailed(pkg.spec, err);
-      } else {
-        requiredFailure = { spec: pkg.spec, err };
-        aggregator.onFailed(pkg.spec, err);
-        ac.abort();
-      }
-    }
-  }));
+  if (!flags.dryRun && toDownload.length > 0) {
+    const renderer = new ProgressRenderer(aggregator);
+    renderer.start();
 
-  renderer.stop();
+    await Promise.all(toDownload.map(async pkg => {
+      aggregator.onFetchStart(pkg.spec);
+      try {
+        const fetchSpec = pkg.resolved || pkg.spec;
+        await fetchWithRetry(
+          fetchSpec,
+          { ...pacoteOpts, integrity: pkg.integrity, signal: ac.signal },
+          (len) => aggregator.onChunk(pkg.spec, len),
+          () => aggregator.onRetry(pkg.spec),
+        );
+        aggregator.onEnd(pkg.spec, { cached: false });
+      } catch (err) {
+        if (ac.signal.aborted) {
+          aggregator.onAbort(pkg.spec);
+          return;
+        }
+        if (pkg.optional) {
+          aggregator.onFailed(pkg.spec, err);
+        } else {
+          requiredFailure = { spec: pkg.spec, err };
+          aggregator.onFailed(pkg.spec, err);
+          ac.abort();
+        }
+      }
+    }));
+
+    renderer.stop();
+  }
 
   if (requiredFailure) {
     console.error(`\n  ${chalk.red('✖')}  Required package fetch failed: ${requiredFailure.spec}`);
@@ -100,8 +129,44 @@ async function install(packages, flags) {
     process.exit(1);
   }
 
-  // Step 5: Reify (link packages).
-  // Cache is warm from the explicit pacote pass above — no network traffic expected.
+  // Step 4b: Re-verify cached tarballs immediately before reify. Closes the
+  // TOCTOU window where probe-says-cached + tarball-evicted-by-other-process
+  // would surface as a confusing "reify failed" error. fs.access on each
+  // path is microseconds; silently re-fetching evicted ones is cheap insurance.
+  if (!flags.dryRun && cachedSpecs.size > 0) {
+    const cacheDir = resolveCacheDir(pacoteOpts);
+    const cachedPkgs = pkgSpecs.filter(p => cachedSpecs.has(p.spec));
+    const evictedPkgs = [];
+    await Promise.all(cachedPkgs.map(async pkg => {
+      const tarPath = tarballCachePath(cacheDir, pkg.integrity);
+      if (!tarPath) return;
+      try {
+        await fs.promises.access(tarPath, fs.constants.F_OK);
+      } catch {
+        evictedPkgs.push(pkg);
+      }
+    }));
+
+    if (evictedPkgs.length > 0) {
+      await Promise.all(evictedPkgs.map(async pkg => {
+        try {
+          const fetchSpec = pkg.resolved || pkg.spec;
+          await fetchWithRetry(
+            fetchSpec,
+            { ...pacoteOpts, integrity: pkg.integrity },
+            () => {},
+            () => {},
+          );
+        } catch {
+          // Swallow — reify's own pacote will surface the actual failure
+          // with a proper error if the tarball still can't be fetched.
+        }
+      }));
+    }
+  }
+
+  // Step 5: Reify (link packages). Cache is warm — explicit pacote pass
+  // populated it, and the re-verify step above repaired any post-probe evictions.
   process.stdout.write(`  ${chalk.blue('🔗')}  Linking...\n`);
   try {
     await arb.reify();

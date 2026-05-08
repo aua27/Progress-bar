@@ -61,5 +61,42 @@ test('--version reads from package.json', () => {
   );
 });
 
+// Conflicting save flags must exit 1 — silently dropping one would mask user intent.
+test('--save-dev with --save-optional exits 1', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', 'react', '--save-dev', '--save-optional'], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes('conflicting flags'),
+    `expected stderr to mention conflicting flags, got: ${result.stderr}`,
+  );
+});
+
+test('--save-dev with --no-save exits 1', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', 'react', '--save-dev', '--no-save'], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes('conflicting flags'),
+    `expected stderr to mention conflicting flags, got: ${result.stderr}`,
+  );
+});
+
+test('--workspace with --workspaces exits 1', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', '--workspace', 'pkg-a', '--workspaces'], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes('conflicting flags'),
+    `expected stderr to mention conflicting flags, got: ${result.stderr}`,
+  );
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

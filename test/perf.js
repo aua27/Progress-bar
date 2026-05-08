@@ -150,13 +150,18 @@ async function main() {
   console.log(`Warm cache:  npm  median=${nws.median}ms p95=${nws.p95}ms`);
 
   const overhead = (xcs.median - ncs.median) / ncs.median;
+  const warmOverhead = (xws.median - nws.median) / nws.median;
   console.log(`\nCold overhead: ${(overhead * 100).toFixed(2)}%`);
+  console.log(`Warm overhead: ${(warmOverhead * 100).toFixed(2)}%`);
 
-  if (overhead > 0.03) {
-    console.error(`✖  Overhead ${(overhead * 100).toFixed(2)}% exceeds 3% threshold`);
+  const failures = [];
+  if (overhead > 0.03) failures.push(`cold ${(overhead * 100).toFixed(2)}%`);
+  if (warmOverhead > 0.03) failures.push(`warm ${(warmOverhead * 100).toFixed(2)}%`);
+  if (failures.length) {
+    console.error(`✖  Overhead exceeds 3% threshold: ${failures.join(', ')}`);
     process.exit(1);
   } else {
-    console.log(`✔  Overhead within 3% threshold`);
+    console.log(`✔  Overhead within 3% threshold (cold and warm)`);
   }
 }
 

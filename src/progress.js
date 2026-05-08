@@ -1,6 +1,6 @@
 'use strict';
 
-const chalk = require('chalk').default;
+const chalk = require('chalk');
 const { MAX_RETRIES } = require('./adapters/pacote');
 
 const RENDER_INTERVAL_MS = 100;

@@ -131,5 +131,39 @@ test('cache-probe false positive: bytes counted even when probe said cached', ()
   assert.strictEqual(agg.counts().done, 1);
 });
 
+// 9. Cached package credits distSize toward totalBytes
+test('cached package credits distSize as bytes when no chunks streamed', () => {
+  const agg = new DownloadAggregator();
+  agg.register('lodash@4.17.21', { distSize: 1000 });
+  agg.onFetchStart('lodash@4.17.21');
+  agg.onEnd('lodash@4.17.21', { cached: true });
+  assert.strictEqual(agg.totalBytes(), 1000);
+  assert.strictEqual(agg.counts().cached, 1);
+});
+
+// 10. Cached credit doesn't double-count when bytes were streamed
+test('cached credit does not override real streamed bytes', () => {
+  const agg = new DownloadAggregator();
+  agg.register('lodash@4.17.21', { distSize: 1000 });
+  agg.onFetchStart('lodash@4.17.21');
+  agg.onChunk('lodash@4.17.21', 750);
+  agg.onEnd('lodash@4.17.21', { cached: true });
+  assert.strictEqual(agg.totalBytes(), 750);
+});
+
+// 11. onChunk after retry transitions retrying back to fetching
+test('onChunk after retry exits retrying status — counter no longer inflated', () => {
+  const agg = new DownloadAggregator();
+  agg.register('lodash@4.17.21');
+  agg.onFetchStart('lodash@4.17.21');
+  agg.onChunk('lodash@4.17.21', 100);
+  agg.onRetry('lodash@4.17.21');
+  assert.strictEqual(agg.counts().retrying, 1);
+  agg.onChunk('lodash@4.17.21', 200);
+  assert.strictEqual(agg.counts().retrying, 0);
+  assert.strictEqual(agg.counts().fetching, 1);
+  assert.strictEqual(agg.totalBytes(), 200);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

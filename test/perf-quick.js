@@ -65,6 +65,15 @@ async function main() {
   const seedEnv = { ...process.env, NPM_CONFIG_CACHE: sharedCache, npm_config_registry: REGISTRY, npm_config_progress: 'false' };
   execSync(npmCmd, { cwd: seedDir, stdio: 'pipe', env: seedEnv });
   fs.rmSync(seedDir, { recursive: true, force: true });
+  process.stdout.write(' done\n');
+
+  // Untimed npmx warm-up — first npmx run pays a one-time module-load + JIT
+  // cost (Node has to read npmx's source from disk and warm the OS file cache).
+  // Without this, run 1 looks like 5x overhead vs npm and skews the median.
+  process.stdout.write('Warming up npmx (untimed)...');
+  const warmupDir = freshDir();
+  execSync(npmxCmd, { cwd: warmupDir, stdio: 'pipe', env: seedEnv });
+  fs.rmSync(warmupDir, { recursive: true, force: true });
   process.stdout.write(' done\n\n');
 
   const npmxTimes = [];
