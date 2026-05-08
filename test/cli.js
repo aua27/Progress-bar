@@ -1,0 +1,65 @@
+'use strict';
+
+const assert = require('assert');
+const { spawnSync } = require('child_process');
+const path = require('path');
+
+const BIN = path.resolve(__dirname, '../bin/npmx.js');
+
+let passed = 0;
+let failed = 0;
+
+console.log('\nCLI flag tests\n');
+
+function test(name, fn) {
+  try {
+    fn();
+    console.log(`  ✔  ${name}`);
+    passed++;
+  } catch (err) {
+    console.log(`  ✖  ${name}`);
+    console.log(`     ${err.message}`);
+    failed++;
+  }
+}
+
+// Unknown flag must exit 1 and name the offending flag without starting an install.
+test('unknown flag exits 1 and names the offending flag', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', 'react', '--unknown-flag'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes('--unknown-flag'),
+    `expected stderr to mention --unknown-flag, got: ${result.stderr}`,
+  );
+});
+
+// Unknown flag must list the supported flags so the user knows what's allowed.
+test('unknown flag error lists supported flags', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', 'react', '--unknown-flag'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.ok(
+    result.stderr.includes('--save-dev'),
+    `expected stderr to include allowlist, got: ${result.stderr}`,
+  );
+});
+
+// --version must print the version from package.json, not a hardcoded string.
+test('--version reads from package.json', () => {
+  const pkg = require('../package.json');
+  const result = spawnSync(process.execPath, [BIN, '--version'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.ok(
+    result.stdout.trim() === pkg.version || result.stderr.trim() === pkg.version,
+    `expected version ${pkg.version}, got stdout="${result.stdout.trim()}" stderr="${result.stderr.trim()}"`,
+  );
+});
+
+console.log(`\n${passed} passed, ${failed} failed`);
+if (failed > 0) process.exit(1);
