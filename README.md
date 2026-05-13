@@ -114,10 +114,3 @@ npm run test:correctness  # lockfile parity check
 | Interactive peer-dep conflict resolution | Conflicts surface as errors |
 | Uncommon `.npmrc` keys | May be silently ignored |
 
-## Design
-
-The complete design is in [`PLAN.md`](./PLAN.md). The architecture, byte accounting state machine, failure policy, and verification matrix are documented there.
-
-## License
-
-ISC
