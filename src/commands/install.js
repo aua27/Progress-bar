@@ -14,10 +14,13 @@ const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', 
 
 // Mutually-exclusive flag groups. npm rejects these combinations explicitly;
 // silently picking one and dropping the others would mask user intent.
+const VALID_OMIT_TYPES = new Set(['dev', 'optional', 'peer']);
+
 function validateFlags(flags) {
   const saveFlags = [];
   if (flags.saveDev) saveFlags.push('--save-dev');
   if (flags.saveOptional) saveFlags.push('--save-optional');
+  if (flags.saveProd) saveFlags.push('--save-prod');
   if (flags.save === false) saveFlags.push('--no-save');
   if (saveFlags.length > 1) {
     console.error(`npmx: conflicting flags: ${saveFlags.join(' and ')} cannot be combined`);
@@ -26,6 +29,22 @@ function validateFlags(flags) {
   if (flags.workspace && flags.workspaces) {
     console.error('npmx: conflicting flags: --workspace and --workspaces cannot be combined');
     process.exit(1);
+  }
+  if (flags.omit) {
+    for (const val of flags.omit) {
+      if (!VALID_OMIT_TYPES.has(val)) {
+        console.error(`npmx: invalid --omit value '${val}'. Valid values: dev, optional, peer`);
+        process.exit(1);
+      }
+    }
+  }
+  if (flags.include) {
+    for (const val of flags.include) {
+      if (!VALID_OMIT_TYPES.has(val)) {
+        console.error(`npmx: invalid --include value '${val}'. Valid values: dev, optional, peer`);
+        process.exit(1);
+      }
+    }
   }
 }
 

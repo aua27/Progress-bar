@@ -11,6 +11,9 @@ function getArboristOpts(parsedFlags, extraOpts = {}) {
   } else if (parsedFlags.saveOptional) {
     opts.save = true;
     opts.saveType = 'optional';
+  } else if (parsedFlags.saveProd) {
+    opts.save = true;
+    opts.saveType = 'prod';
   } else if (parsedFlags.save === false) {
     opts.save = false;
   } else {
@@ -34,6 +37,15 @@ function getArboristOpts(parsedFlags, extraOpts = {}) {
   // arborist expects workspaces as an array; empty array means "all workspaces".
   // Boolean true is not valid and causes reify() to throw "not iterable".
   if (parsedFlags.workspaces) opts.workspaces = [];
+
+  if (parsedFlags.saveExact) opts.savePrefix = '';
+  if (parsedFlags.ignoreScripts) opts.ignoreScripts = true;
+  if (parsedFlags.registry) opts.registry = parsedFlags.registry;
+  if (parsedFlags.omit && parsedFlags.omit.length) opts.omit = parsedFlags.omit;
+  if (parsedFlags.include && parsedFlags.include.length) opts.include = parsedFlags.include;
+  if (parsedFlags.strictPeerDeps) opts.strictPeerDeps = true;
+  if (parsedFlags.packageLock === false) opts.packageLock = false;
+  if (parsedFlags.preferOffline) opts.preferOffline = true;
 
   return opts;
 }

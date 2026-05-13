@@ -98,5 +98,56 @@ test('--workspace with --workspaces exits 1', () => {
   );
 });
 
+// --save-prod conflicts with other save flags.
+test('--save-prod with --save-dev exits 1', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', 'react', '--save-prod', '--save-dev'], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes('conflicting flags'),
+    `expected stderr to mention conflicting flags, got: ${result.stderr}`,
+  );
+});
+
+// --omit with an invalid value must exit 1.
+test('--omit with invalid value exits 1', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', '--omit', 'nonsense'], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes("invalid --omit value"),
+    `expected stderr to mention invalid --omit value, got: ${result.stderr}`,
+  );
+});
+
+// --include with an invalid value must exit 1.
+test('--include with invalid value exits 1', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', '--include', 'nonsense'], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes("invalid --include value"),
+    `expected stderr to mention invalid --include value, got: ${result.stderr}`,
+  );
+});
+
+// The supported-flags message must list all new flags.
+test('unknown flag error lists new flags (--ignore-scripts, --omit, --registry)', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', '--bad-flag'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.ok(result.stderr.includes('--ignore-scripts'), `missing --ignore-scripts in flag list`);
+  assert.ok(result.stderr.includes('--omit'), `missing --omit in flag list`);
+  assert.ok(result.stderr.includes('--registry'), `missing --registry in flag list`);
+  assert.ok(result.stderr.includes('--prefer-offline'), `missing --prefer-offline in flag list`);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

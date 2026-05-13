@@ -30,18 +30,27 @@ V1 only ships `npmx install` (and the `i` alias). `npmx update` and `npmx exec` 
 |---|---|---|
 | `--save-dev` | `-D` | Save to `devDependencies` |
 | `--save-optional` | `-O` | Save to `optionalDependencies` |
+| `--save-prod` | `-P` | Save to `dependencies` (explicit) |
+| `--save-exact` | `-E` | Save with exact version (no `^`/`~`) |
 | `--no-save` | | Do not modify `package.json` |
 | `--global` | `-g` | Install to the global prefix |
 | `--legacy-peer-deps` | | Use legacy peer-dep resolution |
+| `--strict-peer-deps` | | Fail on any peer dependency conflict |
 | `--force` | | Force install |
 | `--dry-run` | | Plan only — no network, no disk writes |
+| `--ignore-scripts` | | Do not run lifecycle scripts |
 | `--prefix <path>` | | Override install prefix |
+| `--registry <url>` | | Set custom registry URL |
 | `--workspace <name>` | `-w` | Install in a specific workspace |
 | `--workspaces` | | Install in all workspaces |
+| `--omit <type>` | | Omit dependency type (`dev`, `optional`, `peer`) |
+| `--include <type>` | | Include dependency type (overrides `--omit`) |
+| `--no-package-lock` | | Do not generate `package-lock.json` |
+| `--prefer-offline` | | Prefer cached packages over registry |
 
 Unknown flags exit with code 1. The supported list is strict and intentional — silent passthrough would mask wrong behavior.
 
-Conflicting flags (`--save-dev` with `--save-optional`, `--workspace` with `--workspaces`, etc.) also exit with code 1.
+Conflicting flags (`--save-dev` with `--save-optional` or `--save-prod`, `--workspace` with `--workspaces`, etc.) also exit with code 1.
 
 ## How it works
 

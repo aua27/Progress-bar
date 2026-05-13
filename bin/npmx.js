@@ -11,7 +11,12 @@ if (!satisfies(process.version, '>=18.0.0')) {
 const { Command } = require('commander');
 const installCommand = require('../src/commands/install');
 
-const SUPPORTED_FLAGS_MSG = 'Supported flags: --save-dev, --save-optional, --no-save, --global,\n  --legacy-peer-deps, --force, --dry-run, --prefix, --workspace, --workspaces';
+const SUPPORTED_FLAGS_MSG = `Supported flags: --save-dev, --save-optional, --save-prod, --save-exact, --no-save,
+  --global, --legacy-peer-deps, --strict-peer-deps, --force, --dry-run,
+  --ignore-scripts, --prefix, --registry, --workspace, --workspaces,
+  --omit, --include, --no-package-lock, --prefer-offline`;
+
+function collect(val, acc) { acc.push(val); return acc; }
 
 const program = new Command();
 
@@ -36,6 +41,15 @@ program
   .option('--prefix <path>', 'Set prefix directory')
   .option('-w, --workspace <name>', 'Install in specific workspace')
   .option('--workspaces', 'Install in all workspaces')
+  .option('-P, --save-prod', 'Save to dependencies (explicit)')
+  .option('-E, --save-exact', 'Save with exact version')
+  .option('--ignore-scripts', 'Do not run lifecycle scripts')
+  .option('--registry <url>', 'Set registry URL')
+  .option('--omit <type>', 'Omit dependency type (dev, optional, peer)', collect, [])
+  .option('--include <type>', 'Include dependency type (overrides omit)', collect, [])
+  .option('--strict-peer-deps', 'Fail on peer dep conflicts')
+  .option('--no-package-lock', 'Do not generate package-lock.json')
+  .option('--prefer-offline', 'Prefer cached packages')
   .allowUnknownOption(false)
   .exitOverride(err => {
     if (err.code === 'commander.unknownOption') {
