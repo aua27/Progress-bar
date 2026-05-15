@@ -7,9 +7,11 @@ class DownloadAggregator {
     this._specs = new Map();
   }
 
-  register(spec, { optional = false, distSize = null } = {}) {
-    this._specs.set(spec, {
-      spec,
+  // key   — unique identifier used as the Map key (e.g. resolved URL)
+  // displaySpec — human-readable name shown in retry/failure output (e.g. name@version)
+  register(key, { optional = false, distSize = null, displaySpec = null } = {}) {
+    this._specs.set(key, {
+      spec: displaySpec || key,
       optional,
       status: 'pending',
       attempt: 0,
@@ -45,7 +47,7 @@ class DownloadAggregator {
     // Credit distSize as bytes when we mark a package cached without streaming —
     // keeps the Tier 1 progress bar's totalBytes/totalSize ratio correct on
     // partial-cache installs where some packages are pre-known cached.
-    if (cached && s.bytes === 0 && s.distSize != null) {
+    if (cached && s.bytes === 0 && s.distSize != null && s.distSize > 0) {
       s.bytes = s.distSize;
     }
   }
@@ -63,6 +65,7 @@ class DownloadAggregator {
     const s = this._get(spec);
     if (TERMINAL.has(s.status)) return;
     s.bytes = 0;
+    s.distSize = null;  // exclude from totalSize so aborted packages don't freeze Tier 1
     s.committed = false;
     s.status = 'aborted';
   }
@@ -88,7 +91,7 @@ class DownloadAggregator {
     let total = 0;
     let allKnown = true;
     for (const s of this._specs.values()) {
-      if (s.distSize != null) {
+      if (s.distSize != null && s.distSize > 0) {
         total += s.distSize;
       } else {
         allKnown = false;
@@ -100,7 +103,7 @@ class DownloadAggregator {
   knownSizeCount() {
     let known = 0;
     for (const s of this._specs.values()) {
-      if (s.distSize != null) known++;
+      if (s.distSize != null && s.distSize > 0) known++;
     }
     return known;
   }

@@ -11,10 +11,10 @@ if (!satisfies(process.version, '>=18.0.0')) {
 const { Command } = require('commander');
 const installCommand = require('../src/commands/install');
 
-const SUPPORTED_FLAGS_MSG = `Supported flags: --save-dev, --save-optional, --save-prod, --save-exact, --no-save,
+const SUPPORTED_FLAGS_MSG = `Supported flags: --save, --save-dev, --save-optional, --save-prod, --save-exact, --no-save,
   --global, --legacy-peer-deps, --strict-peer-deps, --force, --dry-run,
   --ignore-scripts, --prefix, --registry, --workspace, --workspaces,
-  --omit, --include, --no-package-lock, --prefer-offline`;
+  --omit, --include, --package-lock, --no-package-lock, --prefer-offline`;
 
 function collect(val, acc) { acc.push(val); return acc; }
 
@@ -33,6 +33,7 @@ program
   .description('Install packages')
   .option('-D, --save-dev', 'Save to devDependencies')
   .option('-O, --save-optional', 'Save to optionalDependencies')
+  .option('--save', 'Save to package.json (default)')
   .option('--no-save', 'Do not save to package.json')
   .option('-g, --global', 'Install globally')
   .option('--legacy-peer-deps', 'Use legacy peer deps resolution')
@@ -48,6 +49,7 @@ program
   .option('--omit <type>', 'Omit dependency type (dev, optional, peer)', collect, [])
   .option('--include <type>', 'Include dependency type (overrides omit)', collect, [])
   .option('--strict-peer-deps', 'Fail on peer dep conflicts')
+  .option('--package-lock', 'Generate package-lock.json (default)')
   .option('--no-package-lock', 'Do not generate package-lock.json')
   .option('--prefer-offline', 'Prefer cached packages')
   .allowUnknownOption(false)
@@ -61,6 +63,11 @@ program
     throw err;
   })
   .action(async (packages, opts) => {
+    const badArg = packages.find(p => p.startsWith('-'));
+    if (badArg) {
+      console.error(`npmx: invalid package name '${badArg}' — did you mean to pass this as a flag before the package list?`);
+      process.exit(1);
+    }
     await installCommand(packages, opts).catch(err => {
       console.error(`npmx: ${err.message}`);
       process.exit(1);

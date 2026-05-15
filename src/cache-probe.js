@@ -42,7 +42,7 @@ function tarballCachePath(cacheDir, integrity) {
 }
 
 function resolveCacheDir(opts) {
-  return opts.cache
+  return (opts && opts.cache)
     || process.env.npm_config_cache
     || process.env.NPM_CONFIG_CACHE
     || path.join(os.homedir(), '.npm');
@@ -78,11 +78,10 @@ async function probeAll(specs, opts) {
 
   const cachedSpecs = new Set();
   for (let i = 0; i < specs.length; i++) {
-    if (results[i]) cachedSpecs.add(specs[i].spec);
+    if (results[i]) cachedSpecs.add(specs[i].key || specs[i].spec);
   }
   return {
     likelyCached: cachedSpecs.size,
-    likelyToDownload: specs.length - cachedSpecs.size,
     cachedSpecs,
   };
 }

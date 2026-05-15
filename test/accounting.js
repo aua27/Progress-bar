@@ -151,6 +151,44 @@ test('cached credit does not override real streamed bytes', () => {
   assert.strictEqual(agg.totalBytes(), 750);
 });
 
+// 12. BUG-001: duplicate name@version with different resolved URLs → two separate entries
+test('duplicate name@version with different resolved URLs tracked as separate entries', () => {
+  const agg = new DownloadAggregator();
+  agg.register('https://registry-a.example/lodash-4.17.21.tgz', { distSize: 1000, displaySpec: 'lodash@4.17.21' });
+  agg.register('https://registry-b.example/lodash-4.17.21.tgz', { distSize: 2000, displaySpec: 'lodash@4.17.21' });
+  assert.strictEqual(agg.total(), 2, 'both entries should be tracked separately');
+  assert.strictEqual(agg.totalSize(), 3000, 'both distSizes should be summed');
+  agg.onFetchStart('https://registry-a.example/lodash-4.17.21.tgz');
+  agg.onEnd('https://registry-a.example/lodash-4.17.21.tgz');
+  agg.onFetchStart('https://registry-b.example/lodash-4.17.21.tgz');
+  agg.onEnd('https://registry-b.example/lodash-4.17.21.tgz');
+  assert.strictEqual(agg.counts().done, 2);
+});
+
+// 13. BUG-002: aborted packages excluded from totalSize — no Tier 1 denominator inflation
+test('aborted packages excluded from totalSize — no Tier 1 freeze', () => {
+  const agg = new DownloadAggregator();
+  agg.register('a@1.0.0', { distSize: 1000 });
+  agg.register('b@1.0.0', { distSize: 1000 });
+  agg.onFetchStart('a@1.0.0');
+  agg.onChunk('a@1.0.0', 1000);
+  agg.onEnd('a@1.0.0');
+  agg.onFetchStart('b@1.0.0');
+  agg.onAbort('b@1.0.0');
+  // b's distSize is zeroed on abort → allKnown false → totalSize null → Tier 2 used
+  assert.strictEqual(agg.totalSize(), null, 'totalSize null when aborted packages present');
+  assert.strictEqual(agg.totalBytes(), 1000, 'completed bytes unaffected');
+  assert.strictEqual(agg.counts().aborted, 1);
+});
+
+// 14. BUG-008: distSize=0 treated as unknown — does not activate Tier 1
+test('distSize=0 treated as unknown — does not activate Tier 1', () => {
+  const agg = new DownloadAggregator();
+  agg.register('a@1.0.0', { distSize: 0 });
+  assert.strictEqual(agg.totalSize(), null, 'distSize=0 treated as unknown');
+  assert.strictEqual(agg.knownSizeCount(), 0, 'distSize=0 not counted as known size');
+});
+
 // 11. onChunk after retry transitions retrying back to fetching
 test('onChunk after retry exits retrying status — counter no longer inflated', () => {
   const agg = new DownloadAggregator();

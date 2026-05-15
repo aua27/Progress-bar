@@ -72,6 +72,10 @@ async function fetchWithRetry(spec, opts, onChunk, onRetry) {
       if (isTransient(err) && attempt < MAX_RETRIES) {
         attempt++;
         if (onRetry) onRetry();
+        // Server errors need recovery time; network errors (ECONNRESET etc.) retry immediately
+        if (typeof err.statusCode === 'number' && err.statusCode >= 500) {
+          await new Promise(r => setTimeout(r, 500 * attempt));
+        }
         continue;
       }
       throw err;

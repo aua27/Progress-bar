@@ -26,6 +26,10 @@ function validateFlags(flags) {
     console.error(`npmx: conflicting flags: ${saveFlags.join(' and ')} cannot be combined`);
     process.exit(1);
   }
+  if (typeof flags.workspace === 'string' && !flags.workspace.trim()) {
+    console.error('npmx: invalid --workspace value: workspace name cannot be empty');
+    process.exit(1);
+  }
   if (flags.workspace && flags.workspaces) {
     console.error('npmx: conflicting flags: --workspace and --workspaces cannot be combined');
     process.exit(1);
@@ -93,16 +97,16 @@ async function install(packages, flags) {
   // Cached packages are read once, by reify, during extraction.
   const aggregator = new DownloadAggregator();
   for (const pkg of pkgSpecs) {
-    aggregator.register(pkg.spec, { optional: pkg.optional, distSize: pkg.distSize });
+    aggregator.register(pkg.key, { optional: pkg.optional, distSize: pkg.distSize, displaySpec: pkg.spec });
   }
   for (const pkg of pkgSpecs) {
-    if (cachedSpecs.has(pkg.spec)) {
-      aggregator.onFetchStart(pkg.spec);
-      aggregator.onEnd(pkg.spec, { cached: true });
+    if (cachedSpecs.has(pkg.key)) {
+      aggregator.onFetchStart(pkg.key);
+      aggregator.onEnd(pkg.key, { cached: true });
     }
   }
 
-  const toDownload = pkgSpecs.filter(p => !cachedSpecs.has(p.spec));
+  const toDownload = pkgSpecs.filter(p => !cachedSpecs.has(p.key));
 
   // Step 4: Download phase. Skipped on dry-run (semantic contract: no side
   // effects, no network) and when there's nothing to download.
@@ -114,26 +118,26 @@ async function install(packages, flags) {
     renderer.start();
 
     await Promise.all(toDownload.map(async pkg => {
-      aggregator.onFetchStart(pkg.spec);
+      aggregator.onFetchStart(pkg.key);
       try {
         const fetchSpec = pkg.resolved || pkg.spec;
         await fetchWithRetry(
           fetchSpec,
           { ...pacoteOpts, integrity: pkg.integrity, signal: ac.signal },
-          (len) => aggregator.onChunk(pkg.spec, len),
-          () => aggregator.onRetry(pkg.spec),
+          (len) => aggregator.onChunk(pkg.key, len),
+          () => aggregator.onRetry(pkg.key),
         );
-        aggregator.onEnd(pkg.spec, { cached: false });
+        aggregator.onEnd(pkg.key, { cached: false });
       } catch (err) {
         if (ac.signal.aborted) {
-          aggregator.onAbort(pkg.spec);
+          aggregator.onAbort(pkg.key);
           return;
         }
         if (pkg.optional) {
-          aggregator.onFailed(pkg.spec, err);
+          aggregator.onFailed(pkg.key, err);
         } else {
-          requiredFailure = { spec: pkg.spec, err };
-          aggregator.onFailed(pkg.spec, err);
+          if (!requiredFailure) requiredFailure = { spec: pkg.spec, err };  // capture first failure only
+          aggregator.onFailed(pkg.key, err);
           ac.abort();
         }
       }
@@ -154,7 +158,7 @@ async function install(packages, flags) {
   // path is microseconds; silently re-fetching evicted ones is cheap insurance.
   if (!flags.dryRun && cachedSpecs.size > 0) {
     const cacheDir = resolveCacheDir(pacoteOpts);
-    const cachedPkgs = pkgSpecs.filter(p => cachedSpecs.has(p.spec));
+    const cachedPkgs = pkgSpecs.filter(p => cachedSpecs.has(p.key));
     const evictedPkgs = [];
     await Promise.all(cachedPkgs.map(async pkg => {
       const tarPath = tarballCachePath(cacheDir, pkg.integrity);

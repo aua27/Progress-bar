@@ -24,6 +24,7 @@
     "chalk": "^4.1.2",
     "commander": "^13.1.0",
     "pacote": "^21.5.0",
+    "react": "^19.2.6",
     "semver": "^7.7.2"
   },
   "repository": {

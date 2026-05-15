@@ -149,5 +149,55 @@ test('unknown flag error lists new flags (--ignore-scripts, --omit, --registry)'
   assert.ok(result.stderr.includes('--prefer-offline'), `missing --prefer-offline in flag list`);
 });
 
+// BUG-004: --workspace with empty string must be rejected
+test('--workspace with empty string exits 1', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', '--workspace', ''], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes('workspace'),
+    `expected workspace error, got: ${result.stderr}`,
+  );
+});
+
+// BUG-005: --save accepted as valid no-op flag
+test('--save accepted as valid flag (no unknown-flag error)', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', '--save', '--dry-run'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.ok(
+    !result.stderr.includes('unknown flag'),
+    `--save should be recognized, got stderr: ${result.stderr}`,
+  );
+});
+
+// BUG-005: --package-lock accepted as valid no-op flag
+test('--package-lock accepted as valid flag (no unknown-flag error)', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', '--package-lock', '--dry-run'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.ok(
+    !result.stderr.includes('unknown flag'),
+    `--package-lock should be recognized, got stderr: ${result.stderr}`,
+  );
+});
+
+// BUG-009: flag-like args after -- separator give a clear error
+test('package names starting with - give clear error', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', '--', 'react', '--dry-run'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes('--dry-run') || result.stderr.includes('invalid package name'),
+    `expected clear error about flag-like arg, got: ${result.stderr}`,
+  );
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

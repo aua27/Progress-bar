@@ -42,6 +42,7 @@ class ArboristAdapter {
         name: node.name,
         version: node.version,
         spec: `${node.name}@${node.version}`,
+        key: node.resolved,   // unique identifier; resolved is already deduped above
         resolved: node.resolved,
         integrity: node.integrity,
         optional: !!node.optional,
