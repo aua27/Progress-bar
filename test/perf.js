@@ -9,7 +9,7 @@ const REGISTRY = process.env.TEST_REGISTRY || 'http://localhost:4873';
 const RUNS = process.env.PERF_RUNS ? parseInt(process.env.PERF_RUNS, 10) : 10;
 
 const TEST_PKG = {
-  name: 'npmx-perf-test',
+  name: 'npmbar-perf-test',
   version: '1.0.0',
   dependencies: {
     'express': '^4.18.0',
@@ -47,7 +47,7 @@ const TEST_PKG = {
 };
 
 function freshDir(label) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `npmx-perf-${label}-`));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `npmbar-perf-${label}-`));
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(TEST_PKG, null, 2));
   return dir;
 }
@@ -82,21 +82,21 @@ async function main() {
   console.log(`Performance test: ${RUNS} runs each, cold and warm cache`);
   console.log(`Registry: ${REGISTRY}\n`);
 
-  const npmxCmd = `node ${path.join(__dirname, '../bin/npmx.js')} install`;
+  const npmbarCmd = `node ${path.join(__dirname, '../bin/npmbar.js')} install`;
   const npmCmd = `npm install`;
 
-  const npmxCold = [];
+  const npmbarCold = [];
   const npmCold = [];
-  const npmxWarm = [];
+  const npmbarWarm = [];
   const npmWarm = [];
 
   // --- Cold cache runs (interleaved to cancel out temporal bias) ---
   console.log('--- Cold cache runs (interleaved) ---');
   for (let i = 0; i < RUNS; i++) {
-    const xCache = fs.mkdtempSync(path.join(os.tmpdir(), 'npmx-cache-'));
-    const xDir = freshDir(`cold-npmx-${i}`);
-    const xt = timedRun(npmxCmd, xDir, xCache);
-    npmxCold.push(xt);
+    const xCache = fs.mkdtempSync(path.join(os.tmpdir(), 'npmbar-cache-'));
+    const xDir = freshDir(`cold-npmbar-${i}`);
+    const xt = timedRun(npmbarCmd, xDir, xCache);
+    npmbarCold.push(xt);
     fs.rmSync(xDir, { recursive: true, force: true });
     fs.rmSync(xCache, { recursive: true, force: true });
 
@@ -107,7 +107,7 @@ async function main() {
     fs.rmSync(nDir, { recursive: true, force: true });
     fs.rmSync(nCache, { recursive: true, force: true });
 
-    process.stdout.write(`  run ${i + 1}: npmx=${xt}ms  npm=${nt}ms\n`);
+    process.stdout.write(`  run ${i + 1}: npmbar=${xt}ms  npm=${nt}ms\n`);
   }
 
   // --- Warm cache runs ---
@@ -123,9 +123,9 @@ async function main() {
 
   // Interleaved timed warm runs
   for (let i = 0; i < RUNS; i++) {
-    const xDir = freshDir(`warm-npmx-${i}`);
-    const xt = timedRun(npmxCmd, xDir, warmCache);
-    npmxWarm.push(xt);
+    const xDir = freshDir(`warm-npmbar-${i}`);
+    const xt = timedRun(npmbarCmd, xDir, warmCache);
+    npmbarWarm.push(xt);
     fs.rmSync(xDir, { recursive: true, force: true });
 
     const nDir = freshDir(`warm-npm-${i}`);
@@ -133,20 +133,20 @@ async function main() {
     npmWarm.push(nt);
     fs.rmSync(nDir, { recursive: true, force: true });
 
-    process.stdout.write(`  run ${i + 1}: npmx=${xt}ms  npm=${nt}ms\n`);
+    process.stdout.write(`  run ${i + 1}: npmbar=${xt}ms  npm=${nt}ms\n`);
   }
 
   fs.rmSync(warmCache, { recursive: true, force: true });
 
-  const xcs = stats(npmxCold);
+  const xcs = stats(npmbarCold);
   const ncs = stats(npmCold);
-  const xws = stats(npmxWarm);
+  const xws = stats(npmbarWarm);
   const nws = stats(npmWarm);
 
   console.log('\n--- Results ---');
-  console.log(`Cold cache:  npmx median=${xcs.median}ms p95=${xcs.p95}ms`);
+  console.log(`Cold cache:  npmbar median=${xcs.median}ms p95=${xcs.p95}ms`);
   console.log(`Cold cache:  npm  median=${ncs.median}ms p95=${ncs.p95}ms`);
-  console.log(`Warm cache:  npmx median=${xws.median}ms p95=${xws.p95}ms`);
+  console.log(`Warm cache:  npmbar median=${xws.median}ms p95=${xws.p95}ms`);
   console.log(`Warm cache:  npm  median=${nws.median}ms p95=${nws.p95}ms`);
 
   const overhead = (xcs.median - ncs.median) / ncs.median;

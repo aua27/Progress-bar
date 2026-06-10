@@ -4,7 +4,7 @@ const assert = require('assert');
 const { spawnSync } = require('child_process');
 const path = require('path');
 
-const BIN = path.resolve(__dirname, '../bin/npmx.js');
+const BIN = path.resolve(__dirname, '../bin/npmbar.js');
 
 let passed = 0;
 let failed = 0;

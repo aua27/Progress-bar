@@ -10,7 +10,7 @@ const RUNS = parseInt(process.env.PERF_RUNS || '2', 10);
 
 // Smaller package set for faster cold runs
 const TEST_PKG = {
-  name: 'npmx-perf-test',
+  name: 'npmbar-perf-test',
   version: '1.0.0',
   dependencies: {
     'lodash': '^4.17.21',
@@ -20,12 +20,12 @@ const TEST_PKG = {
   },
 };
 
-const npmxBin = path.resolve(__dirname, '../bin/npmx.js');
-const npmxCmd = `node "${npmxBin}" install`;
+const npmbarBin = path.resolve(__dirname, '../bin/npmbar.js');
+const npmbarCmd = `node "${npmbarBin}" install`;
 const npmCmd = `npm install`;
 
 function freshDir() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'npmx-perf-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'npmbar-perf-'));
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(TEST_PKG, null, 2));
   return dir;
 }
@@ -54,15 +54,15 @@ async function main() {
   console.log(`Registry: ${REGISTRY}`);
   console.log(`Packages: ${Object.keys(TEST_PKG.dependencies).join(', ')}\n`);
 
-  const npmxTimes = [];
+  const npmbarTimes = [];
   const npmTimes = [];
 
   for (let i = 0; i < RUNS; i++) {
     const xCache = fs.mkdtempSync(path.join(os.tmpdir(), 'perf-cache-x-'));
     const xDir = freshDir();
-    process.stdout.write(`run ${i + 1}: npmx (cold)... `);
-    const xt = run(npmxCmd, xDir, xCache);
-    npmxTimes.push(xt);
+    process.stdout.write(`run ${i + 1}: npmbar (cold)... `);
+    const xt = run(npmbarCmd, xDir, xCache);
+    npmbarTimes.push(xt);
     fs.rmSync(xDir, { recursive: true, force: true });
     fs.rmSync(xCache, { recursive: true, force: true });
     process.stdout.write(`${xt}ms\n`);
@@ -77,11 +77,11 @@ async function main() {
     process.stdout.write(`${nt}ms  overhead=${((xt - nt) / nt * 100).toFixed(1)}%\n\n`);
   }
 
-  const mNpmx = median(npmxTimes);
+  const mNpmbar = median(npmbarTimes);
   const mNpm = median(npmTimes);
-  const overhead = (mNpmx - mNpm) / mNpm;
+  const overhead = (mNpmbar - mNpm) / mNpm;
 
-  console.log(`Median: npmx=${mNpmx}ms  npm=${mNpm}ms`);
+  console.log(`Median: npmbar=${mNpmbar}ms  npm=${mNpm}ms`);
   console.log(`Cold-cache overhead: ${(overhead * 100).toFixed(2)}%`);
 
   if (overhead > 0.03) {

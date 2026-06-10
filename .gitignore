@@ -9,3 +9,7 @@ skill-observations/
 CLAUDE.md
 PLAN.md
 comparisons.md
+scratch/
+ROADMAP.md
+test/chaos.js
+test/arborist-api-check.js

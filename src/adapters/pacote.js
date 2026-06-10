@@ -3,7 +3,6 @@
 const pacote = require('pacote');
 
 const TRANSIENT_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'EABORT']);
-const MAX_RETRIES = 2;
 
 // EABORT (close without end) is retried because server connection drops are
 // usually transient. It is distinct from EABORT_SIGNAL (AbortController abort),
@@ -69,13 +68,25 @@ async function fetchWithRetry(spec, opts, onChunk, onRetry) {
       return;
     } catch (err) {
       if (signal?.aborted) throw err;
-      if (isTransient(err) && attempt < MAX_RETRIES) {
+      const maxRetries = opts.fetchRetries ?? 2;
+      if (isTransient(err) && attempt < maxRetries) {
         attempt++;
         if (onRetry) onRetry();
-        // Server errors need recovery time; network errors (ECONNRESET etc.) retry immediately
+        
+        const minTimeout = opts.fetchRetryMintimeout ?? 10000;
+        const maxTimeout = opts.fetchRetryMaxtimeout ?? 60000;
+        const factor = opts.fetchRetryFactor ?? 10;
+        
+        let delay = minTimeout * Math.pow(factor, attempt - 1);
         if (typeof err.statusCode === 'number' && err.statusCode >= 500) {
-          await new Promise(r => setTimeout(r, 500 * attempt));
+          delay = Math.max(delay, 500 * attempt);
+        } else {
+          // Subdue latency for network errors by clamping to a smaller max for non-500 errors
+          delay = Math.min(delay, 5000 * attempt); 
         }
+        delay = Math.min(delay, maxTimeout);
+        
+        await new Promise(r => setTimeout(r, delay));
         continue;
       }
       throw err;
@@ -83,4 +94,4 @@ async function fetchWithRetry(spec, opts, onChunk, onRetry) {
   }
 }
 
-module.exports = { fetchWithRetry, MAX_RETRIES };
+module.exports = { fetchWithRetry };

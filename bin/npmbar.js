@@ -4,7 +4,7 @@
 const { satisfies } = require('semver');
 
 if (!satisfies(process.version, '>=18.0.0')) {
-  console.error(`npmx: requires Node.js >=18, found ${process.version}`);
+  console.error(`npmbar: requires Node.js >=18, found ${process.version}`);
   process.exit(1);
 }
 
@@ -14,14 +14,16 @@ const installCommand = require('../src/commands/install');
 const SUPPORTED_FLAGS_MSG = `Supported flags: --save, --save-dev, --save-optional, --save-prod, --save-exact, --no-save,
   --global, --legacy-peer-deps, --strict-peer-deps, --force, --dry-run,
   --ignore-scripts, --prefix, --registry, --workspace, --workspaces,
-  --omit, --include, --package-lock, --no-package-lock, --prefer-offline`;
+  --omit, --include, --package-lock, --no-package-lock, --prefer-offline,
+  --fetch-retries, --fetch-retry-mintimeout, --fetch-retry-maxtimeout,
+  --fetch-retry-factor`;
 
 function collect(val, acc) { acc.push(val); return acc; }
 
 const program = new Command();
 
 program
-  .name('npmx')
+  .name('npmbar')
   .description('npm install with accurate download progress bars')
   .version(require('../package.json').version)
   .exitOverride()
@@ -52,11 +54,15 @@ program
   .option('--package-lock', 'Generate package-lock.json (default)')
   .option('--no-package-lock', 'Do not generate package-lock.json')
   .option('--prefer-offline', 'Prefer cached packages')
+  .option('--fetch-retries <n>', 'Number of fetch retries')
+  .option('--fetch-retry-mintimeout <ms>', 'Minimum timeout for fetch retries')
+  .option('--fetch-retry-maxtimeout <ms>', 'Maximum timeout for fetch retries')
+  .option('--fetch-retry-factor <n>', 'Exponential backoff factor for fetch retries')
   .allowUnknownOption(false)
   .exitOverride(err => {
     if (err.code === 'commander.unknownOption') {
       const flag = err.message.match(/'([^']+)'/)?.[1] || err.message;
-      console.error(`npmx: unknown flag ${flag}`);
+      console.error(`npmbar: unknown flag ${flag}`);
       console.error(SUPPORTED_FLAGS_MSG);
       process.exit(1);
     }
@@ -65,17 +71,17 @@ program
   .action(async (packages, opts) => {
     const badArg = packages.find(p => p.startsWith('-'));
     if (badArg) {
-      console.error(`npmx: invalid package name '${badArg}' — did you mean to pass this as a flag before the package list?`);
+      console.error(`npmbar: invalid package name '${badArg}' — did you mean to pass this as a flag before the package list?`);
       process.exit(1);
     }
     await installCommand(packages, opts).catch(err => {
-      console.error(`npmx: ${err.message}`);
+      console.error(`npmbar: ${err.message}`);
       process.exit(1);
     });
   });
 
 program.on('command:*', () => {
-  console.error(`npmx: unknown command '${program.args[0]}'`);
+  console.error(`npmbar: unknown command '${program.args[0]}'`);
   console.error('V1 only supports: install');
   process.exit(1);
 });
@@ -91,6 +97,6 @@ program.parseAsync(process.argv).catch(err => {
   if (err.code === 'commander.helpDisplayed' ||
       err.code === 'commander.help' ||
       err.code === 'commander.version') process.exit(0);
-  console.error(`npmx: ${err.message}`);
+  console.error(`npmbar: ${err.message}`);
   process.exit(1);
 });

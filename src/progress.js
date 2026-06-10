@@ -1,7 +1,6 @@
 'use strict';
 
 const chalk = require('chalk');
-const { MAX_RETRIES } = require('./adapters/pacote');
 
 const RENDER_INTERVAL_MS = 100;
 const BAR_WIDTH = 20;
@@ -69,6 +68,7 @@ class ProgressRenderer {
   }
 
   _render() {
+    if (!process.stdout.isTTY) return;
     const counts = this._agg.counts();
     const total = this._agg.total();
     const completed = counts.done + counts.cached + counts.failed;
@@ -110,7 +110,7 @@ class ProgressRenderer {
 
     if (retrying.length > 0) {
       const latest = retrying[retrying.length - 1];
-      lines.push(`      ${chalk.yellow('retrying:')} ${retrying.length}  (latest: ${latest.spec}, retry ${latest.attempt}/${MAX_RETRIES})`);
+      lines.push(`      ${chalk.yellow('retrying:')} ${retrying.length}  (latest: ${latest.spec}, retry ${latest.attempt})`);
     }
 
     for (const line of lines) {

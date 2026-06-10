@@ -23,21 +23,21 @@ function validateFlags(flags) {
   if (flags.saveProd) saveFlags.push('--save-prod');
   if (flags.save === false) saveFlags.push('--no-save');
   if (saveFlags.length > 1) {
-    console.error(`npmx: conflicting flags: ${saveFlags.join(' and ')} cannot be combined`);
+    console.error(`npmbar: conflicting flags: ${saveFlags.join(' and ')} cannot be combined`);
     process.exit(1);
   }
   if (typeof flags.workspace === 'string' && !flags.workspace.trim()) {
-    console.error('npmx: invalid --workspace value: workspace name cannot be empty');
+    console.error('npmbar: invalid --workspace value: workspace name cannot be empty');
     process.exit(1);
   }
   if (flags.workspace && flags.workspaces) {
-    console.error('npmx: conflicting flags: --workspace and --workspaces cannot be combined');
+    console.error('npmbar: conflicting flags: --workspace and --workspaces cannot be combined');
     process.exit(1);
   }
   if (flags.omit) {
     for (const val of flags.omit) {
       if (!VALID_OMIT_TYPES.has(val)) {
-        console.error(`npmx: invalid --omit value '${val}'. Valid values: dev, optional, peer`);
+        console.error(`npmbar: invalid --omit value '${val}'. Valid values: dev, optional, peer`);
         process.exit(1);
       }
     }
@@ -45,7 +45,7 @@ function validateFlags(flags) {
   if (flags.include) {
     for (const val of flags.include) {
       if (!VALID_OMIT_TYPES.has(val)) {
-        console.error(`npmx: invalid --include value '${val}'. Valid values: dev, optional, peer`);
+        console.error(`npmbar: invalid --include value '${val}'. Valid values: dev, optional, peer`);
         process.exit(1);
       }
     }
@@ -76,7 +76,7 @@ async function install(packages, flags) {
   } catch (err) {
     if (spinnerTimer) clearInterval(spinnerTimer);
     if (process.stdout.isTTY) process.stdout.write('\n');
-    console.error(`npmx: failed to resolve packages: ${err.message}`);
+    console.error(`npmbar: failed to resolve packages: ${err.message}`);
     process.exit(1);
   }
   if (spinnerTimer) clearInterval(spinnerTimer);
@@ -111,7 +111,8 @@ async function install(packages, flags) {
   // Step 4: Download phase. Skipped on dry-run (semantic contract: no side
   // effects, no network) and when there's nothing to download.
   const ac = new AbortController();
-  let requiredFailure = null;
+  const requiredFailures = [];
+  let evictedPkgs = [];
 
   if (!flags.dryRun && toDownload.length > 0) {
     const renderer = new ProgressRenderer(aggregator);
@@ -136,7 +137,7 @@ async function install(packages, flags) {
         if (pkg.optional) {
           aggregator.onFailed(pkg.key, err);
         } else {
-          if (!requiredFailure) requiredFailure = { spec: pkg.spec, err };  // capture first failure only
+          requiredFailures.push({ spec: pkg.spec, err });
           aggregator.onFailed(pkg.key, err);
           ac.abort();
         }
@@ -146,9 +147,11 @@ async function install(packages, flags) {
     renderer.stop();
   }
 
-  if (requiredFailure) {
-    console.error(`\n  ${chalk.red('✖')}  Required package fetch failed: ${requiredFailure.spec}`);
-    console.error(`     ${requiredFailure.err.message}`);
+  if (requiredFailures.length > 0) {
+    console.error(`\n  ${chalk.red('✖')}  ${requiredFailures.length} required package(s) failed:`);
+    for (const f of requiredFailures) {
+      console.error(`     ${f.spec}: ${f.err.message}`);
+    }
     process.exit(1);
   }
 
@@ -159,7 +162,6 @@ async function install(packages, flags) {
   if (!flags.dryRun && cachedSpecs.size > 0) {
     const cacheDir = resolveCacheDir(pacoteOpts);
     const cachedPkgs = pkgSpecs.filter(p => cachedSpecs.has(p.key));
-    const evictedPkgs = [];
     await Promise.all(cachedPkgs.map(async pkg => {
       const tarPath = tarballCachePath(cacheDir, pkg.integrity);
       if (!tarPath) return;
@@ -180,9 +182,11 @@ async function install(packages, flags) {
             () => {},
             () => {},
           );
-        } catch {
-          // Swallow — reify's own pacote will surface the actual failure
-          // with a proper error if the tarball still can't be fetched.
+        } catch (refetchErr) {
+          // Log warning — reify may fail next if this tarball is truly unavailable.
+          // We don't abort here because reify's own pacote call will surface
+          // the canonical error with proper context.
+          console.error(`  ${chalk.yellow('⚠')}  Re-fetch failed for evicted tarball: ${pkg.spec} (${refetchErr.message})`);
         }
       }));
     }
@@ -194,7 +198,10 @@ async function install(packages, flags) {
   try {
     await arb.reify();
   } catch (err) {
-    console.error(`npmx: reify failed: ${err.message}`);
+    console.error(`npmbar: reify failed: ${err.message}`);
+    if (evictedPkgs.length > 0) {
+      console.error(`  ${evictedPkgs.length} tarball(s) were re-fetched after cache eviction — this may be the cause.`);
+    }
     console.error('  Run `npm install` to attempt recovery.');
     process.exit(1);
   }

@@ -46,6 +46,10 @@ function getArboristOpts(parsedFlags, extraOpts = {}) {
   if (parsedFlags.strictPeerDeps) opts.strictPeerDeps = true;
   if (parsedFlags.packageLock === false) opts.packageLock = false;
   if (parsedFlags.preferOffline) opts.preferOffline = true;
+  if (parsedFlags.fetchRetries !== undefined) opts.fetchRetries = parseInt(parsedFlags.fetchRetries, 10);
+  if (parsedFlags.fetchRetryFactor !== undefined) opts.fetchRetryFactor = parseFloat(parsedFlags.fetchRetryFactor);
+  if (parsedFlags.fetchRetryMintimeout !== undefined) opts.fetchRetryMintimeout = parseInt(parsedFlags.fetchRetryMintimeout, 10);
+  if (parsedFlags.fetchRetryMaxtimeout !== undefined) opts.fetchRetryMaxtimeout = parseInt(parsedFlags.fetchRetryMaxtimeout, 10);
 
   return opts;
 }

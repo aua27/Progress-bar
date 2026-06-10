@@ -1,13 +1,13 @@
-# npmx
+# npmbar
 
 `npm install` with accurate download progress bars — bytes downloaded, transfer speed, ETA — at less than 3% overhead vs plain `npm install`.
 
-npm's own progress bar was removed because it caused 30–50% slowdown. `npmx` decouples rendering from byte counting, so progress is reported without competing with the install itself for the I/O event loop.
+npm's own progress bar was removed because it caused 30–50% slowdown. `npmbar` decouples rendering from byte counting, so progress is reported without competing with the install itself for the I/O event loop.
 
 ## Install
 
 ```sh
-npm install -g npmx
+npm install -g npmbar
 ```
 
 Requires Node.js 22.12 or later.
@@ -15,14 +15,14 @@ Requires Node.js 22.12 or later.
 ## Usage
 
 ```sh
-npmx install                         # install from package.json
-npmx install express react           # add packages
-npmx i lodash --save-dev             # alias `i` works; --save-dev / -D supported
-npmx install --dry-run               # plan only; no network, no writes
-npmx install --global cowsay         # global install
+npmbar install                         # install from package.json
+npmbar install express react           # add packages
+npmbar i lodash --save-dev             # alias `i` works; --save-dev / -D supported
+npmbar install --dry-run               # plan only; no network, no writes
+npmbar install --global cowsay         # global install
 ```
 
-V1 only ships `npmx install` (and the `i` alias). `npmx update` and `npmx exec` are planned for v2.
+V1 only ships `npmbar install` (and the `i` alias). `npmbar update` and `npmbar exec` are planned for v2.
 
 ### Supported flags
 
@@ -54,10 +54,10 @@ Conflicting flags (`--save-dev` with `--save-optional` or `--save-prod`, `--work
 
 ## How it works
 
-`npmx` ships pinned copies of npm's own libraries (`@npmcli/arborist` and `pacote`) as regular dependencies — it does not depend on the user's globally installed npm CLI. The lockfile format (v3) is determined entirely by the bundled arborist.
+`npmbar` ships pinned copies of npm's own libraries (`@npmcli/arborist` and `pacote`) as regular dependencies — it does not depend on the user's globally installed npm CLI. The lockfile format (v3) is determined entirely by the bundled arborist.
 
 ```
-npmx install <pkgs>
+npmbar install <pkgs>
    │
    1. arborist.buildIdealTree()          — same as npm
    │
@@ -82,9 +82,9 @@ The probe uses a direct `fs.access` on the cacache `content-v2` path derived fro
 
 ## Pinned versions
 
-`npmx` pins the npm internals it ships:
+`npmbar` pins the npm internals it ships:
 
-| Package | Pinned in npmx 1.x |
+| Package | Pinned in npmbar 1.x |
 |---|---|
 | `@npmcli/arborist` | `^9.4.3` |
 | `pacote` | `^21.5.0` |
@@ -103,7 +103,7 @@ A nightly CI job (see `CONTRIBUTING.md`) catches lockfile-format drift before us
 
 ## Verification
 
-`npmx` claims its `package-lock.json` matches what `npm install` produces on the same `package.json`. The correctness test parses both lockfiles and does a recursive deep-equal that ignores key ordering, covering the entire object — not a subset of fields.
+`npmbar` claims its `package-lock.json` matches what `npm install` produces on the same `package.json`. The correctness test parses both lockfiles and does a recursive deep-equal that ignores key ordering, covering the entire object — not a subset of fields.
 
 The performance test runs 10 cold-cache and 10 warm-cache iterations against a real registry, drops min/max, and asserts both medians are within 3% of `npm install`.
 

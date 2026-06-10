@@ -31,8 +31,11 @@ function tarballCachePath(cacheDir, integrity) {
   const algo = first.slice(0, dash);
   const b64 = first.slice(dash + 1);
   let hex;
-  try { hex = Buffer.from(b64, 'base64').toString('hex'); }
-  catch { return null; }
+  try {
+    hex = Buffer.from(b64, 'base64').toString('hex');
+    // Sanity: hex must be strictly hex characters
+    if (!/^[0-9a-f]+$/i.test(hex)) return null;
+  } catch { return null; }
   if (hex.length < 4) return null;
   const root = cacacheRoot(cacheDir);
   return path.join(

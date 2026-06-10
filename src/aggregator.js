@@ -44,6 +44,15 @@ class DownloadAggregator {
     if (TERMINAL.has(s.status)) return;
     s.committed = true;
     s.status = cached ? 'cached' : 'done';
+    // Track significant distSize mismatches for diagnostic reporting.
+    // A mismatch means the progress bar's Tier 1 percentage was inaccurate
+    // during this package's download (but capped at 99% so no visual break).
+    if (!cached && s.distSize != null && s.distSize > 0 && s.bytes > 0) {
+      const ratio = s.bytes / s.distSize;
+      if (ratio < 0.5 || ratio > 2.0) {
+        this._distSizeMismatches = (this._distSizeMismatches || 0) + 1;
+      }
+    }
     // Credit distSize as bytes when we mark a package cached without streaming —
     // keeps the Tier 1 progress bar's totalBytes/totalSize ratio correct on
     // partial-cache installs where some packages are pre-known cached.
@@ -138,6 +147,10 @@ class DownloadAggregator {
       }
     }
     return failed;
+  }
+
+  distSizeMismatches() {
+    return this._distSizeMismatches || 0;
   }
 
   _get(spec) {

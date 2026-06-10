@@ -15,6 +15,15 @@ class ArboristAdapter {
     this.opts = resolvedOpts;
     this.arb = new Arborist(resolvedOpts);
     this._idealTree = null;
+
+    // Runtime API surface check — catch arborist major version breaks early.
+    // These are the undocumented arborist internals we depend on.
+    if (typeof this.arb.buildIdealTree !== 'function') {
+      throw new Error('npmbar: incompatible @npmcli/arborist — missing buildIdealTree(). Check pinned version.');
+    }
+    if (typeof this.arb.reify !== 'function') {
+      throw new Error('npmbar: incompatible @npmcli/arborist — missing reify(). Check pinned version.');
+    }
   }
 
   async buildIdealTree(packages) {
@@ -29,6 +38,9 @@ class ArboristAdapter {
 
   extractPackageSpecs() {
     if (!this._idealTree) throw new Error('idealTree not built');
+    if (!this._idealTree.inventory || typeof this._idealTree.inventory.values !== 'function') {
+      throw new Error('npmbar: incompatible @npmcli/arborist — missing idealTree.inventory.values(). Check pinned version.');
+    }
     // Deduplicate by resolved URL: the same tarball can appear at multiple
     // depths in the tree (hoisted and nested peers). We only need one fetch per URL.
     const seen = new Set();

@@ -9,7 +9,7 @@ const GLOBAL_MODE = process.argv.includes('--global');
 const REGISTRY = process.env.TEST_REGISTRY || 'https://registry.npmjs.org';
 
 const TEST_PKG = {
-  name: 'npmx-correctness-test',
+  name: 'npmbar-correctness-test',
   version: '1.0.0',
   dependencies: { express: '^4.18.0' },
 };
@@ -36,7 +36,7 @@ function deepSortedEqual(a, b, keyPath = '') {
 }
 
 function freshDir(label) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `npmx-test-${label}-`));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `npmbar-test-${label}-`));
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(TEST_PKG, null, 2));
   return dir;
 }
@@ -59,27 +59,27 @@ async function main() {
   if (GLOBAL_MODE) {
     console.log('Running global install parity test\n');
 
-    const dir1 = fs.mkdtempSync(path.join(os.tmpdir(), 'npmx-test-npmx-global-'));
-    const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'npmx-test-npm-global-'));
+    const dir1 = fs.mkdtempSync(path.join(os.tmpdir(), 'npmbar-test-npmbar-global-'));
+    const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'npmbar-test-npm-global-'));
     const prefix1 = path.join(dir1, 'prefix');
     const prefix2 = path.join(dir2, 'prefix');
     fs.mkdirSync(prefix1, { recursive: true });
     fs.mkdirSync(prefix2, { recursive: true });
 
     try {
-      runInstall(`node ${path.join(__dirname, '../bin/npmx.js')} install -g cowsay --prefix ${prefix1}`, dir1);
+      runInstall(`node ${path.join(__dirname, '../bin/npmbar.js')} install -g cowsay --prefix ${prefix1}`, dir1);
       runInstall(`npm install -g cowsay --prefix ${prefix2}`, dir2);
 
       // Check 1: prefix layout — lib/node_modules/cowsay exists
-      const npmxCowsay = path.join(prefix1, 'lib', 'node_modules', 'cowsay');
+      const npmbarCowsay = path.join(prefix1, 'lib', 'node_modules', 'cowsay');
       const npmCowsay = path.join(prefix2, 'lib', 'node_modules', 'cowsay');
-      if (!fs.existsSync(npmxCowsay)) throw new Error(`npmx: cowsay not found at ${npmxCowsay}`);
+      if (!fs.existsSync(npmbarCowsay)) throw new Error(`npmbar: cowsay not found at ${npmbarCowsay}`);
       if (!fs.existsSync(npmCowsay)) throw new Error(`npm: cowsay not found at ${npmCowsay}`);
       console.log('✔  Prefix layout: lib/node_modules/cowsay present');
 
       // Check 2: bin shim exists and is executable
       const cowsayBin = path.join(prefix1, 'bin', 'cowsay');
-      if (!fs.existsSync(cowsayBin)) throw new Error(`npmx: cowsay bin not found at ${cowsayBin}`);
+      if (!fs.existsSync(cowsayBin)) throw new Error(`npmbar: cowsay bin not found at ${cowsayBin}`);
       execSync(`"${cowsayBin}" hello`, { stdio: 'pipe' });
       console.log('✔  Bin shim: cowsay hello exits 0');
 
@@ -96,34 +96,34 @@ async function main() {
     return;
   }
 
-  console.log('Running correctness comparison: npmx install vs npm install\n');
+  console.log('Running correctness comparison: npmbar install vs npm install\n');
 
-  const npmxDir = freshDir('npmx');
+  const npmbarDir = freshDir('npmbar');
   const npmDir = freshDir('npm');
 
   try {
-    console.log('→ Running npmx install...');
-    runInstall(`node ${path.join(__dirname, '../bin/npmx.js')} install`, npmxDir);
+    console.log('→ Running npmbar install...');
+    runInstall(`node ${path.join(__dirname, '../bin/npmbar.js')} install`, npmbarDir);
 
     console.log('→ Running npm install...');
     runInstall(`npm install`, npmDir);
 
     // Primary: full semantic lockfile comparison
-    const npmxLock = readLock(npmxDir);
+    const npmbarLock = readLock(npmbarDir);
     const npmLock = readLock(npmDir);
-    if (!npmxLock) throw new Error('npmx did not produce package-lock.json');
+    if (!npmbarLock) throw new Error('npmbar did not produce package-lock.json');
     if (!npmLock) throw new Error('npm did not produce package-lock.json');
 
     console.log('\n→ Comparing package-lock.json semantically...');
-    deepSortedEqual(npmxLock, npmLock);
+    deepSortedEqual(npmbarLock, npmLock);
     console.log('✔  package-lock.json: semantically identical');
 
     // Secondary: node_modules/.package-lock.json comparison
-    const npmxInternalLock = readLock(npmxDir, path.join('node_modules', '.package-lock.json'));
+    const npmbarInternalLock = readLock(npmbarDir, path.join('node_modules', '.package-lock.json'));
     const npmInternalLock = readLock(npmDir, path.join('node_modules', '.package-lock.json'));
-    if (npmxInternalLock && npmInternalLock) {
+    if (npmbarInternalLock && npmInternalLock) {
       console.log('\n→ Comparing node_modules/.package-lock.json semantically...');
-      deepSortedEqual(npmxInternalLock, npmInternalLock);
+      deepSortedEqual(npmbarInternalLock, npmInternalLock);
       console.log('✔  node_modules/.package-lock.json: semantically identical');
     } else {
       console.log('⚠  node_modules/.package-lock.json: skipped (one or both missing)');
@@ -131,12 +131,12 @@ async function main() {
 
     // Smoke test
     console.log('\n→ Smoke test: require("express")...');
-    execSync(`node -e "require('express')"`, { cwd: npmxDir, stdio: 'inherit' });
+    execSync(`node -e "require('express')"`, { cwd: npmbarDir, stdio: 'inherit' });
     console.log('✔  Smoke test passed');
 
     console.log('\nAll correctness checks passed.');
   } finally {
-    fs.rmSync(npmxDir, { recursive: true, force: true });
+    fs.rmSync(npmbarDir, { recursive: true, force: true });
     fs.rmSync(npmDir, { recursive: true, force: true });
   }
 }

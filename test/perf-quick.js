@@ -9,7 +9,7 @@ const REGISTRY = process.env.TEST_REGISTRY || 'https://registry.npmjs.org';
 const RUNS = parseInt(process.env.PERF_RUNS || '3', 10);
 
 const TEST_PKG = {
-  name: 'npmx-perf-test',
+  name: 'npmbar-perf-test',
   version: '1.0.0',
   dependencies: {
     'express': '^4.18.0',
@@ -25,12 +25,12 @@ const TEST_PKG = {
   },
 };
 
-const npmxBin = path.resolve(__dirname, '../bin/npmx.js');
-const npmxCmd = `node "${npmxBin}" install`;
+const npmbarBin = path.resolve(__dirname, '../bin/npmbar.js');
+const npmbarCmd = `node "${npmbarBin}" install`;
 const npmCmd = `npm install`;
 
 function freshDir() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'npmx-perf-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'npmbar-perf-'));
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(TEST_PKG, null, 2));
   return dir;
 }
@@ -56,7 +56,7 @@ function median(arr) {
 async function main() {
   console.log(`Quick perf check: ${RUNS} warm-cache runs each`);
   console.log(`Registry: ${REGISTRY}`);
-  console.log(`npmx: ${npmxCmd}\n`);
+  console.log(`npmbar: ${npmbarCmd}\n`);
 
   const sharedCache = fs.mkdtempSync(path.join(os.tmpdir(), 'perf-cache-'));
 
@@ -67,22 +67,22 @@ async function main() {
   fs.rmSync(seedDir, { recursive: true, force: true });
   process.stdout.write(' done\n');
 
-  // Untimed npmx warm-up — first npmx run pays a one-time module-load + JIT
-  // cost (Node has to read npmx's source from disk and warm the OS file cache).
+  // Untimed npmbar warm-up — first npmbar run pays a one-time module-load + JIT
+  // cost (Node has to read npmbar's source from disk and warm the OS file cache).
   // Without this, run 1 looks like 5x overhead vs npm and skews the median.
-  process.stdout.write('Warming up npmx (untimed)...');
+  process.stdout.write('Warming up npmbar (untimed)...');
   const warmupDir = freshDir();
-  execSync(npmxCmd, { cwd: warmupDir, stdio: 'pipe', env: seedEnv });
+  execSync(npmbarCmd, { cwd: warmupDir, stdio: 'pipe', env: seedEnv });
   fs.rmSync(warmupDir, { recursive: true, force: true });
   process.stdout.write(' done\n\n');
 
-  const npmxTimes = [];
+  const npmbarTimes = [];
   const npmTimes = [];
 
   for (let i = 0; i < RUNS; i++) {
     const xDir = freshDir();
-    const xt = run(npmxCmd, xDir, sharedCache);
-    npmxTimes.push(xt);
+    const xt = run(npmbarCmd, xDir, sharedCache);
+    npmbarTimes.push(xt);
     fs.rmSync(xDir, { recursive: true, force: true });
 
     const nDir = freshDir();
@@ -91,16 +91,16 @@ async function main() {
     fs.rmSync(nDir, { recursive: true, force: true });
 
     const overhead = ((xt - nt) / nt * 100).toFixed(1);
-    console.log(`  run ${i + 1}: npmx=${xt}ms  npm=${nt}ms  overhead=${overhead}%`);
+    console.log(`  run ${i + 1}: npmbar=${xt}ms  npm=${nt}ms  overhead=${overhead}%`);
   }
 
   fs.rmSync(sharedCache, { recursive: true, force: true });
 
-  const mNpmx = median(npmxTimes);
+  const mNpmbar = median(npmbarTimes);
   const mNpm = median(npmTimes);
-  const overhead = (mNpmx - mNpm) / mNpm;
+  const overhead = (mNpmbar - mNpm) / mNpm;
 
-  console.log(`\nMedian: npmx=${mNpmx}ms  npm=${mNpm}ms`);
+  console.log(`\nMedian: npmbar=${mNpmbar}ms  npm=${mNpm}ms`);
   console.log(`Overhead: ${(overhead * 100).toFixed(2)}%`);
 
   if (overhead > 0.03) {
