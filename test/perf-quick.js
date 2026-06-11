@@ -1,12 +1,38 @@
 'use strict';
 
+// Quick warm-cache perf check: npmbar vs npm, small manifest.
+//
+// Usage: node test/perf-quick.js [--runs N]
+// Knobs: --runs N or PERF_RUNS=N (default 3; argv wins), TEST_REGISTRY=<url>.
+
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
 
 const REGISTRY = process.env.TEST_REGISTRY || 'https://registry.npmjs.org';
-const RUNS = parseInt(process.env.PERF_RUNS || '3', 10);
+const THRESHOLD = 0.03;
+
+function parseRuns(argv, def) {
+  let runs = process.env.PERF_RUNS ? parseInt(process.env.PERF_RUNS, 10) : def;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--runs') runs = parseInt(argv[++i], 10);
+    else if (argv[i] === '--help' || argv[i] === '-h') {
+      console.log(`Usage: node ${path.basename(process.argv[1])} [--runs N]   (default n=${def}; PERF_RUNS env also honored)`);
+      process.exit(0);
+    } else {
+      console.error(`Unknown argument: ${argv[i]} (supported: --runs N, --help)`);
+      process.exit(1);
+    }
+  }
+  if (!Number.isInteger(runs) || runs < 1) {
+    console.error('--runs / PERF_RUNS must be a positive integer');
+    process.exit(1);
+  }
+  return runs;
+}
+
+const RUNS = parseRuns(process.argv.slice(2), 3);
 
 const TEST_PKG = {
   name: 'npmbar-perf-test',
@@ -39,6 +65,7 @@ function run(cmd, dir, cacheDir) {
   const env = {
     ...process.env,
     NPM_CONFIG_CACHE: cacheDir,
+    npm_config_cache: cacheDir,
     npm_config_registry: REGISTRY,
     npm_config_progress: 'false',
   };
@@ -47,22 +74,32 @@ function run(cmd, dir, cacheDir) {
   return Date.now() - start;
 }
 
-function median(arr) {
-  const s = [...arr].sort((a, b) => a - b);
-  const n = s.length;
-  return n % 2 === 1 ? s[Math.floor(n / 2)] : (s[Math.floor(n / 2) - 1] + s[Math.floor(n / 2)]) / 2;
+function quantile(sorted, q) {
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+function stats(times) {
+  const s = [...times].sort((a, b) => a - b);
+  return { median: quantile(s, 0.5), p25: quantile(s, 0.25), p75: quantile(s, 0.75), min: s[0], max: s[s.length - 1] };
+}
+
+function fmtStats(label, st) {
+  return `${label} median=${Math.round(st.median)}ms  IQR=[${Math.round(st.p25)}..${Math.round(st.p75)}]ms  min=${st.min}ms  max=${st.max}ms`;
 }
 
 async function main() {
-  console.log(`Quick perf check: ${RUNS} warm-cache runs each`);
+  console.log(`Quick perf check: ${RUNS} warm-cache runs each (interleaved)`);
   console.log(`Registry: ${REGISTRY}`);
   console.log(`npmbar: ${npmbarCmd}\n`);
 
   const sharedCache = fs.mkdtempSync(path.join(os.tmpdir(), 'perf-cache-'));
 
-  process.stdout.write('Seeding warm cache via npm install (first time, may take 30-60s)...');
+  process.stdout.write('Seeding warm cache via npm install (untimed, may take 30-60s)...');
   const seedDir = freshDir();
-  const seedEnv = { ...process.env, NPM_CONFIG_CACHE: sharedCache, npm_config_registry: REGISTRY, npm_config_progress: 'false' };
+  const seedEnv = { ...process.env, NPM_CONFIG_CACHE: sharedCache, npm_config_cache: sharedCache, npm_config_registry: REGISTRY, npm_config_progress: 'false' };
   execSync(npmCmd, { cwd: seedDir, stdio: 'pipe', env: seedEnv });
   fs.rmSync(seedDir, { recursive: true, force: true });
   process.stdout.write(' done\n');
@@ -96,18 +133,25 @@ async function main() {
 
   fs.rmSync(sharedCache, { recursive: true, force: true });
 
-  const mNpmbar = median(npmbarTimes);
-  const mNpm = median(npmTimes);
-  const overhead = (mNpmbar - mNpm) / mNpm;
+  const xs = stats(npmbarTimes);
+  const ns = stats(npmTimes);
+  const overhead = (xs.median - ns.median) / ns.median;
 
-  console.log(`\nMedian: npmbar=${mNpmbar}ms  npm=${mNpm}ms`);
+  console.log(`\n${fmtStats('npmbar:', xs)}`);
+  console.log(fmtStats('npm:   ', ns));
   console.log(`Overhead: ${(overhead * 100).toFixed(2)}%`);
 
-  if (overhead > 0.03) {
-    console.error(`\nFAIL: ${(overhead * 100).toFixed(2)}% exceeds 3% threshold`);
+  console.log(
+    `\nRESULT overhead_pct=${(overhead * 100).toFixed(2)} ` +
+    `npmbar_median_ms=${Math.round(xs.median)} npm_median_ms=${Math.round(ns.median)} n=${RUNS} ` +
+    `regime=warm scenario=small`
+  );
+
+  if (overhead > THRESHOLD) {
+    console.error(`\nFAIL: ${(overhead * 100).toFixed(2)}% exceeds ${THRESHOLD * 100}% threshold`);
     process.exit(1);
   } else {
-    console.log(`\nPASS: overhead within 3% threshold`);
+    console.log(`\nPASS: overhead within ${THRESHOLD * 100}% threshold`);
   }
 }
 

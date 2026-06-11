@@ -13,3 +13,4 @@ scratch/
 ROADMAP.md
 test/chaos.js
 test/arborist-api-check.js
+BENCHMARKS.md
