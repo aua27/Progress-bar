@@ -59,11 +59,11 @@ V1 only ships `npmbar install` (and the `i` alias). `npmbar update` and `npmbar 
 | `--progress` | | Show the progress bar (default in interactive terminals) |
 | `--no-progress` | | Disable the progress bar |
 
-Unknown flags exit with code 1. The supported list is strict and intentional — silent passthrough would mask wrong behavior.
+Unknown flags exit with code 1 rather than being silently ignored, so a typo or an unsupported npm flag is always surfaced.
 
 Conflicting flags (`--save-dev` with `--save-optional` or `--save-prod`, `--workspace` with `--workspaces`, etc.) also exit with code 1.
 
-Progress rendering is automatically disabled when stdout is not a TTY or when `CI` is set in the environment (npm parity) — output degrades to plain log lines with no ANSI escape codes. `Ctrl-C` aborts in-flight downloads, restores the cursor, and exits with code 130.
+Progress rendering is automatically disabled when stdout is not a TTY or when `CI` is set in the environment, matching npm's behavior — output falls back to plain log lines with no ANSI escape codes. `Ctrl-C` aborts in-flight downloads, restores the cursor, and exits with code 130.
 
 ## How it works
 
@@ -112,13 +112,13 @@ When any pinned upstream package publishes a new minor or major:
 2. Run the perf suite (`npm run test:perf`) to confirm the <3% overhead claim still holds.
 3. If correctness or perf fails, pin to the last passing version and open a compatibility issue.
 
-CI runs the correctness suite on every push (see `CONTRIBUTING.md`), and a weekly scheduled benchmark catches perf drift. When a new npm major ships, the CI matrix is manually expanded and the overhead claim is re-measured (the denominator moves).
+CI runs the correctness suite on every push (see `CONTRIBUTING.md`), and a weekly scheduled benchmark guards against performance drift. Benchmark results are re-measured against each new npm release.
 
 ## Verification
 
 `npmbar` claims its `package-lock.json` matches what `npm install` produces on the same `package.json`. The correctness test parses both lockfiles and does a recursive deep-equal that ignores key ordering, covering the entire object — not a subset of fields.
 
-The performance suite times interleaved cold- and warm-cache install pairs (n=10 each) and asserts the median overhead is under 3%. For work parity, npm is timed as `npm install --no-audit --no-fund` — npmbar doesn't run audit or fund, so npm isn't charged for round-trips npmbar never makes. Results report median, IQR, and min/max; `test/perf.js` auto-spawns a local [verdaccio](https://verdaccio.org/) registry if one isn't already running on `localhost:4873`.
+The performance suite times interleaved cold- and warm-cache install pairs (10 runs each) and asserts that the median overhead stays under 3%. For a like-for-like comparison, npm is timed as `npm install --no-audit --no-fund`, since npmbar performs neither of those operations during an install (see *V1 limitations* below). Results report median, interquartile range, and min/max. `test/perf.js` automatically starts a local [verdaccio](https://verdaccio.org/) registry if one is not already running on `localhost:4873`.
 
 ### Measured overhead (v0.9.0)
 
@@ -127,7 +127,9 @@ The performance suite times interleaved cold- and warm-cache install pairs (n=10
 | Warm cache | registry.npmjs.org | 10 | **−2.3%** | 2749 ms | 2814 ms |
 | Cold cache | local verdaccio proxy | 10 | **−2.3%** | 8625 ms | 8828 ms |
 
-Negative means npmbar measured faster than npm in that session — read it as "within noise of zero, comfortably inside the <3% budget", not as a speedup claim. Measured 2026-06-11 on Windows 11, Node v24.1.0, npm 11.3.0, small tree (31 deps); per-run spread in the warm regime was −9.1% to +3.7%. Overhead is relative to a moving baseline — numbers are re-measured per npm release.
+A negative value indicates npmbar completed faster than npm in that measurement session. Differences of this size are within run-to-run variance; the supported conclusion is that npmbar's overhead is below the 3% threshold, not that it is faster than npm.
+
+Environment: Windows 11, Node v24.1.0, npm 11.3.0, 31-dependency tree, measured 2026-06-11. Per-run overhead in the warm regime ranged from −9.1% to +3.7%.
 
 ```sh
 npm test                  # accounting + CLI unit tests
@@ -139,7 +141,7 @@ npm run test:correctness  # lockfile parity check
 
 | Behavior | V1 status |
 |---|---|
-| `npm audit` and `npm fund` | Not run — message at end suggests running `npm audit` separately |
+| `npm audit` and `npm fund` | Not run during install — they add registry round-trips on the performance-critical path. Run `npm audit` / `npm fund` directly; an opt-in `--audit` flag is planned (see `SECURITY.md`) |
 | `npm shrinkwrap` | Not supported |
 | Workspace protocols (`workspace:*`) | Basic support; edge cases not guaranteed |
 | Interactive peer-dep conflict resolution | Conflicts surface as errors |
