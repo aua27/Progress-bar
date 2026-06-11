@@ -16,7 +16,7 @@ const SUPPORTED_FLAGS_MSG = `Supported flags: --save, --save-dev, --save-optiona
   --ignore-scripts, --prefix, --registry, --workspace, --workspaces,
   --omit, --include, --package-lock, --no-package-lock, --prefer-offline,
   --fetch-retries, --fetch-retry-mintimeout, --fetch-retry-maxtimeout,
-  --fetch-retry-factor`;
+  --fetch-retry-factor, --progress, --no-progress`;
 
 function collect(val, acc) { acc.push(val); return acc; }
 
@@ -58,6 +58,8 @@ program
   .option('--fetch-retry-mintimeout <ms>', 'Minimum timeout for fetch retries')
   .option('--fetch-retry-maxtimeout <ms>', 'Maximum timeout for fetch retries')
   .option('--fetch-retry-factor <n>', 'Exponential backoff factor for fetch retries')
+  .option('--progress', 'Show progress bar (default in interactive terminals)')
+  .option('--no-progress', 'Disable progress bar (also auto-disabled in CI and non-TTY)')
   .allowUnknownOption(false)
   .exitOverride(err => {
     if (err.code === 'commander.unknownOption') {

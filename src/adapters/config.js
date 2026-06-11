@@ -5,6 +5,9 @@ const path = require('path');
 function getArboristOpts(parsedFlags, extraOpts = {}) {
   const opts = { ...extraOpts };
 
+  // parsedFlags.progress (--progress / --no-progress) is a renderer concern,
+  // consumed in src/commands/install.js — deliberately NOT mapped to arborist.
+
   if (parsedFlags.saveDev) {
     opts.save = true;
     opts.saveType = 'dev';

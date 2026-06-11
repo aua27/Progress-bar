@@ -199,5 +199,39 @@ test('package names starting with - give clear error', () => {
   );
 });
 
+// G8: --progress / --no-progress are allowlisted renderer flags
+test('--no-progress accepted as valid flag (no unknown-flag error)', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', '--no-progress', '--dry-run'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.ok(
+    !result.stderr.includes('unknown flag'),
+    `--no-progress should be recognized, got stderr: ${result.stderr}`,
+  );
+});
+
+test('unknown flag error lists --progress and --no-progress', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', '--bad-flag'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.ok(result.stderr.includes('--progress'), 'missing --progress in flag list');
+  assert.ok(result.stderr.includes('--no-progress'), 'missing --no-progress in flag list');
+});
+
+// G8: CI mode must emit zero ANSI escape sequences (npm parity: progress
+// suppressed in CI). Dry-run still resolves over the network.
+test('CI=1 dry-run install emits no ANSI escapes on stdout', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', 'left-pad', '--dry-run'], {
+    encoding: 'utf8',
+    timeout: 60000,
+    env: { ...process.env, CI: '1' },
+  });
+  assert.strictEqual(result.status, 0, `expected exit 0, got ${result.status}: ${result.stderr}`);
+  assert.ok(!result.stdout.includes('\x1b['), `stdout contains ANSI escapes: ${JSON.stringify(result.stdout.slice(0, 200))}`);
+  assert.ok(!result.stdout.includes('\r'), `stdout contains carriage returns (spinner leak): ${JSON.stringify(result.stdout.slice(0, 200))}`);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

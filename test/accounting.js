@@ -203,5 +203,106 @@ test('onChunk after retry exits retrying status — counter no longer inflated',
   assert.strictEqual(agg.totalBytes(), 200);
 });
 
+// --- Renderer polish (G8) ---------------------------------------------------
+
+const ANSI_RE = /\x1b\[[0-9;?]*[A-Za-z]/g;
+const stripAnsi = s => s.replace(ANSI_RE, '');
+
+function fakeStream(columns) {
+  return {
+    isTTY: true,
+    columns,
+    writes: [],
+    write(s) { this.writes.push(s); return true; },
+  };
+}
+
+function writtenLines(stream) {
+  return stream.writes.join('').split('\n').map(stripAnsi).filter(l => l.length > 0);
+}
+
+// 15. Narrow terminal: no rendered line may ever exceed the terminal width.
+test('narrow terminal (columns=30): every rendered line fits within columns', () => {
+  const agg = new DownloadAggregator();
+  agg.register('a-very-long-package-name@1.0.0', { distSize: 5000000 });
+  agg.register('another-long-package@2.0.0', { distSize: 5000000 });
+  agg.onFetchStart('a-very-long-package-name@1.0.0');
+  agg.onChunk('a-very-long-package-name@1.0.0', 2500000);
+  agg.onRetry('another-long-package@2.0.0'); // adds the retry line too
+
+  const stream = fakeStream(30);
+  const r = new ProgressRenderer(agg, { stream, enabled: true });
+  r._render();
+  r._render(); // second render exercises the clear-lines path as well
+
+  const lines = writtenLines(stream);
+  assert.ok(lines.length > 0, 'renderer should have written lines');
+  for (const line of lines) {
+    assert.ok(line.length <= 30, `line visible length ${line.length} > 30 columns: "${line}"`);
+  }
+  assert.ok(lines.some(l => l.length === 29), 'expected at least one line truncated to columns-1');
+});
+
+// 16. Undefined columns: conservative 80-column fallback, still no wrap risk.
+test('undefined columns: renderer truncates to 80-column fallback', () => {
+  const agg = new DownloadAggregator();
+  const name = i => `an-absurdly-long-package-name-used-to-verify-fallback-truncation-behavior-${i}@1.0.0`;
+  for (let i = 0; i < 3; i++) {
+    agg.register(name(i), { distSize: 1000000 });
+  }
+  agg.onFetchStart(name(0));
+  agg.onChunk(name(0), 500000);
+  agg.onRetry(name(1));
+
+  const stream = fakeStream(undefined);
+  const r = new ProgressRenderer(agg, { stream, enabled: true });
+  r._render();
+
+  const lines = writtenLines(stream);
+  for (const line of lines) {
+    assert.ok(line.length <= 80, `line visible length ${line.length} > 80 fallback: "${line}"`);
+  }
+  assert.ok(lines.some(l => l.length === 79), 'expected the retry line truncated to 79 (fallback-1)');
+});
+
+// 17. Disabled renderer: start/stop emit nothing — no interval, no escapes.
+test('disabled renderer: start() is a no-op and no bytes (no ANSI) are written', () => {
+  const agg = new DownloadAggregator();
+  agg.register('a@1.0.0', { distSize: 100 });
+  const stream = fakeStream(80);
+  const r = new ProgressRenderer(agg, { stream, enabled: false });
+  r.start();
+  assert.strictEqual(r._timer, null, 'disabled renderer must not start its interval');
+  r.stop();
+  assert.strictEqual(stream.writes.length, 0, `expected zero writes, got: ${JSON.stringify(stream.writes)}`);
+});
+
+// 18. progressEnabled: --no-progress, CI env, and non-TTY each suppress.
+test('progressEnabled: flag=false, CI truthy, and non-TTY each disable progress', () => {
+  const { progressEnabled } = ProgressRenderer;
+  const tty = { isTTY: true };
+  const pipe = { isTTY: false };
+  assert.strictEqual(progressEnabled(undefined, {}, tty), true, 'default on in interactive TTY');
+  assert.strictEqual(progressEnabled(true, {}, tty), true, 'explicit --progress on in TTY');
+  assert.strictEqual(progressEnabled(false, {}, tty), false, '--no-progress disables');
+  assert.strictEqual(progressEnabled(undefined, { CI: '1' }, tty), false, 'CI=1 disables');
+  assert.strictEqual(progressEnabled(undefined, { CI: 'false' }, tty), true, 'CI=false is not CI');
+  assert.strictEqual(progressEnabled(undefined, {}, pipe), false, 'non-TTY disables');
+});
+
+// 19. Cursor lifecycle: hidden on start, restored on stop, stop idempotent.
+test('cursor hidden on start and restored on stop — stop is idempotent', () => {
+  const agg = new DownloadAggregator();
+  const stream = fakeStream(80);
+  const r = new ProgressRenderer(agg, { stream, enabled: true });
+  r.start();
+  assert.ok(stream.writes.join('').includes('\x1b[?25l'), 'start() must hide cursor');
+  r.stop();
+  const countShows = () => stream.writes.join('').split('\x1b[?25h').length - 1;
+  assert.strictEqual(countShows(), 1, 'stop() must show cursor exactly once');
+  r.stop(); // idempotent: no second show escape
+  assert.strictEqual(countShows(), 1, 'second stop() must not emit another cursor-show');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
