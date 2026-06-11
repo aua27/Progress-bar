@@ -1,0 +1,98 @@
+# Perf: validates the <3% warm-cache overhead budget vs plain `npm install`.
+#
+# Runner note: benchmark numbers are ONLY comparable within the same runner
+# class (ubuntu-latest, currently 4-vCPU hosted runners). Do not compare
+# absolute timings across runner classes, OSes, or self-hosted hardware —
+# only the relative npmx-vs-npm overhead ratio from a single run is meaningful.
+#
+# Triggers:
+# - weekly schedule (drift detection)
+# - manual dispatch
+# - pull requests labeled `perf`
+
+name: Perf
+
+on:
+  schedule:
+    # Mondays 05:30 UTC — off the top of the hour to avoid scheduler congestion.
+    - cron: "30 5 * * 1"
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  perf:
+    name: warm-cache overhead benchmark
+    # For pull_request events, only run when the PR carries the `perf` label.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # sticky benchmark comment (no-op on fork PRs)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Warm-cache benchmark against registry.npmjs.org. Asserts the
+      # (npmx_median - npm_median) / npm_median < 0.03 budget and exits 1
+      # on breach.
+      - name: Quick perf benchmark (required)
+        id: perf_quick
+        run: |
+          node test/perf-quick.js 2>&1 | tee perf-quick-output.txt
+          exit ${PIPESTATUS[0]}
+
+      # perf.js requires a verdaccio registry on localhost:4873; another work
+      # stream is adding auto-spawn — once that lands, remove
+      # continue-on-error and make this step required.
+      - name: Full perf benchmark (advisory)
+        id: perf_full
+        continue-on-error: true
+        run: |
+          node test/perf.js 2>&1 | tee perf-full-output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Assemble benchmark report
+        if: always()
+        run: |
+          {
+            echo "## Perf benchmark results"
+            echo
+            echo "Runner: ubuntu-latest (numbers only comparable within this runner class)"
+            echo
+            echo "### perf-quick (warm cache, <3% budget — required)"
+            echo
+            echo '```'
+            cat perf-quick-output.txt 2>/dev/null || echo "(no output captured)"
+            echo '```'
+            echo
+            echo "### perf (verdaccio, advisory until auto-spawn lands)"
+            echo
+            echo '```'
+            cat perf-full-output.txt 2>/dev/null || echo "(no output captured)"
+            echo '```'
+          } > perf-report.md
+          cat perf-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Sticky PR comment with the benchmark output. Guarded: fork PRs run
+      # with a read-only token and cannot comment, so skip them rather than
+      # fail the job.
+      - name: Post sticky PR comment
+        if: >
+          always() &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: perf-benchmark
+          path: perf-report.md

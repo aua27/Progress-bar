@@ -1,0 +1,61 @@
+# CI: unit + CLI smoke tests across the supported OS/Node matrix, plus an
+# end-to-end correctness job that hits the public npm registry.
+#
+# Notes:
+# - test/chaos.js and test/arborist-api-check.js are local-only (gitignored)
+#   and must never be referenced here — a fresh clone does not have them.
+# - The progress renderer no-ops when stdout is not a TTY; tests assert on
+#   output text and exit codes, never on terminal control sequences.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [18, 20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Runs test/accounting.js + test/cli.js (see package.json "test" script)
+      - name: Run tests
+        run: npm test
+
+  correctness:
+    name: correctness (e2e, registry network)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Semantic lockfile-v3 comparison against npm; needs access to
+      # registry.npmjs.org (available on hosted runners).
+      - name: Run correctness suite
+        run: node test/correctness.js
