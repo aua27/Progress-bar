@@ -357,7 +357,9 @@ async function main() {
   await ensureRegistry();
 
   const npmbarCmd = `node "${path.resolve(__dirname, '../bin/npmbar.js')}" install`;
-  const npmCmd = 'npm install';
+  // Work parity: npmbar never runs audit/fund, so npm must not be charged
+  // for those registry round-trips — otherwise the overhead claim is flattered.
+  const npmCmd = 'npm install --no-audit --no-fund';
 
   const npmbarCold = [];
   const npmCold = [];

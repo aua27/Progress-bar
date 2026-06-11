@@ -53,7 +53,9 @@ const TEST_PKG = {
 
 const npmbarBin = path.resolve(__dirname, '../bin/npmbar.js');
 const npmbarCmd = `node "${npmbarBin}" install`;
-const npmCmd = `npm install`;
+// Work parity: npmbar never runs audit/fund, so npm must not be charged
+// for those registry round-trips — otherwise the overhead claim is flattered.
+const npmCmd = `npm install --no-audit --no-fund`;
 
 function freshDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'npmbar-perf-'));
