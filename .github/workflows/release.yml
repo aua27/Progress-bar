@@ -32,10 +32,10 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
+      # No release-type input: manifest mode, so release-please-config.json
+      # and .release-please-manifest.json control versioning (0.9.x line).
       - uses: googleapis/release-please-action@v4
         id: release
-        with:
-          release-type: node
 
   publish:
     needs: release-please
