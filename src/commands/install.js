@@ -50,6 +50,31 @@ function validateFlags(flags) {
       }
     }
   }
+
+  // Fetch-retry flags feed pacote's retry loop. A non-numeric or negative value
+  // parses to NaN, which silently disables retries (attempt < NaN is false) and
+  // leaks a raw Node TimeoutNaNWarning to stderr. Reject before config.js maps
+  // them so the retry semantics stay intact. Values arrive as strings from
+  // commander (negatives too, e.g. "-5").
+  for (const name of ['fetchRetries', 'fetchRetryMintimeout', 'fetchRetryMaxtimeout']) {
+    if (flags[name] === undefined) continue;
+    if (!/^\d+$/.test(String(flags[name]))) {
+      console.error(`npmbar: invalid --${camelToFlag(name)} value '${flags[name]}': expected a non-negative integer`);
+      process.exit(1);
+    }
+  }
+  if (flags.fetchRetryFactor !== undefined) {
+    const factor = Number(flags.fetchRetryFactor);
+    if (!Number.isFinite(factor) || factor < 0) {
+      console.error(`npmbar: invalid --fetch-retry-factor value '${flags.fetchRetryFactor}': expected a non-negative number`);
+      process.exit(1);
+    }
+  }
+}
+
+// fetchRetryMintimeout -> fetch-retry-mintimeout
+function camelToFlag(name) {
+  return name.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`);
 }
 
 async function install(packages, flags) {

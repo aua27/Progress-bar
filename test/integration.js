@@ -193,6 +193,35 @@ async function main() {
     );
   });
 
+  // BUG-011 behavioral: --fetch-retries must actually control the retry count,
+  // not just parse. A required tarball that resets the socket every time
+  // (transient ECONNRESET) is retried until the count is exhausted, then the
+  // install fails. Proven by counting tarball GETs against the mock registry:
+  // --fetch-retries 0 → exactly one attempt (no retry); a positive count →
+  // strictly more attempts. This is the semantics the NaN bug silently broke.
+  await test('--fetch-retries controls retry count on a transient tarball failure', async () => {
+    const RETRY_FIXTURE = { packages: { 'pkg-r': { '1.0.0': {} } }, tarballFailures: { 'pkg-r@1.0.0': 'destroy' } };
+    const RETRY_ARGS = ['--fetch-retry-mintimeout', '10', '--fetch-retry-maxtimeout', '50'];
+    const tarHits = reg => reg.requests.filter(u => /\/pkg-r\/-\/pkg-r-1\.0\.0\.tgz/.test(u)).length;
+
+    let noRetryHits, withRetryHits;
+
+    await withRegistry(RETRY_FIXTURE, async (url, dirs, registry) => {
+      const r = await runNpmbar(['install', 'pkg-r@1.0.0', '--registry', url, '--fetch-retries', '0', ...RETRY_ARGS], dirs);
+      assert.strictEqual(r.status, 1, `expected exit 1, got ${r.status}\nstderr: ${r.stderr}`);
+      noRetryHits = tarHits(registry);
+      assert.strictEqual(noRetryHits, 1, `--fetch-retries 0 must attempt the tarball exactly once, got ${noRetryHits}`);
+    });
+
+    await withRegistry(RETRY_FIXTURE, async (url, dirs, registry) => {
+      const r = await runNpmbar(['install', 'pkg-r@1.0.0', '--registry', url, '--fetch-retries', '1', ...RETRY_ARGS], dirs);
+      assert.strictEqual(r.status, 1, `expected exit 1, got ${r.status}\nstderr: ${r.stderr}`);
+      withRetryHits = tarHits(registry);
+      assert.ok(withRetryHits > 1, `--fetch-retries 1 must retry (>1 attempt), got ${withRetryHits}`);
+      assert.ok(withRetryHits > noRetryHits, `--fetch-retries 1 (${withRetryHits}) must attempt more than --fetch-retries 0 (${noRetryHits})`);
+    });
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
 }

@@ -199,6 +199,86 @@ test('package names starting with - give clear error', () => {
   );
 });
 
+// BUG-011: fetch-retry flags must reject non-numeric and negative values.
+// A NaN silently disables retries (attempt < NaN is false) instead of erroring.
+const RETRY_INT_FLAGS = ['--fetch-retries', '--fetch-retry-mintimeout', '--fetch-retry-maxtimeout'];
+
+for (const flag of RETRY_INT_FLAGS) {
+  test(`${flag} with non-numeric value exits 1`, () => {
+    const result = spawnSync(process.execPath, [BIN, 'install', 'react', flag, 'abc'], {
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+    assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+    assert.ok(
+      result.stderr.includes(`invalid ${flag}`),
+      `expected stderr to mention invalid ${flag}, got: ${result.stderr}`,
+    );
+  });
+
+  test(`${flag} with negative value exits 1`, () => {
+    const result = spawnSync(process.execPath, [BIN, 'install', 'react', flag, '-5'], {
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+    assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+    assert.ok(
+      result.stderr.includes(`invalid ${flag}`),
+      `expected stderr to mention invalid ${flag}, got: ${result.stderr}`,
+    );
+  });
+
+  test(`${flag} with valid value passes validation`, () => {
+    const result = spawnSync(process.execPath, [BIN, 'install', flag, '3', '--dry-run'], {
+      encoding: 'utf8',
+      timeout: 5000,
+      env: { ...process.env, npm_config_registry: 'http://127.0.0.1:1/' },
+    });
+    // Network may fail (bogus registry) but validation runs first — the flag
+    // must not be rejected as invalid.
+    assert.ok(
+      !result.stderr.includes(`invalid ${flag}`),
+      `valid ${flag} value should pass validation, got: ${result.stderr}`,
+    );
+  });
+}
+
+test('--fetch-retry-factor with non-numeric value exits 1', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', 'react', '--fetch-retry-factor', 'abc'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes('invalid --fetch-retry-factor'),
+    `expected stderr to mention invalid --fetch-retry-factor, got: ${result.stderr}`,
+  );
+});
+
+test('--fetch-retry-factor with negative value exits 1', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', 'react', '--fetch-retry-factor', '-2'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes('invalid --fetch-retry-factor'),
+    `expected stderr to mention invalid --fetch-retry-factor, got: ${result.stderr}`,
+  );
+});
+
+test('--fetch-retry-factor with fractional value passes validation', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', '--fetch-retry-factor', '1.5', '--dry-run'], {
+    encoding: 'utf8',
+    timeout: 5000,
+    env: { ...process.env, npm_config_registry: 'http://127.0.0.1:1/' },
+  });
+  assert.ok(
+    !result.stderr.includes('invalid --fetch-retry-factor'),
+    `fractional --fetch-retry-factor should pass validation, got: ${result.stderr}`,
+  );
+});
+
 // G8: --progress / --no-progress are allowlisted renderer flags
 test('--no-progress accepted as valid flag (no unknown-flag error)', () => {
   const result = spawnSync(process.execPath, [BIN, 'install', '--no-progress', '--dry-run'], {
