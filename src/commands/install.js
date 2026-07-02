@@ -150,17 +150,22 @@ async function install(packages, flags) {
         );
         aggregator.onEnd(pkg.key, { cached: false });
       } catch (err) {
-        if (ac.signal.aborted) {
+        // Classify by the error itself, not by ac.signal.aborted: when several
+        // required packages fail in the same tick, the first failure aborts the
+        // signal and a signal-first check would misattribute the rest as
+        // "aborted", discarding their real errors. Only fetches whose error IS
+        // the abort (EABORT_SIGNAL, normalized in fetchWithRetry) are aborted.
+        if (err.code === 'EABORT_SIGNAL') {
           aggregator.onAbort(pkg.key);
           return;
         }
         if (pkg.optional) {
           aggregator.onFailed(pkg.key, err);
-        } else {
-          requiredFailures.push({ spec: pkg.spec, err });
-          aggregator.onFailed(pkg.key, err);
-          ac.abort();
+          return;
         }
+        requiredFailures.push({ spec: pkg.spec, err });
+        aggregator.onFailed(pkg.key, err);
+        ac.abort();
       }
     }));
 
@@ -171,6 +176,13 @@ async function install(packages, flags) {
     console.error(`\n  ${chalk.red('✖')}  ${requiredFailures.length} required package(s) failed:`);
     for (const f of requiredFailures) {
       console.error(`     ${f.spec}: ${f.err.message}`);
+    }
+    // Abort-fast means fetches cancelled by the abort have no observed
+    // outcome — they are not failures, but hiding them would understate the
+    // blast radius during an outage. Report the count explicitly.
+    const abortedCount = aggregator.counts().aborted;
+    if (abortedCount > 0) {
+      console.error(`     ${abortedCount} other fetch(es) cancelled when the install aborted.`);
     }
     process.exit(1);
   }

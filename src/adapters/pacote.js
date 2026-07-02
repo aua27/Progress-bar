@@ -15,6 +15,16 @@ function isTransient(err) {
   return false;
 }
 
+function abortError() {
+  return Object.assign(new Error('fetch aborted'), { code: 'EABORT_SIGNAL' });
+}
+
+// Error codes that are artifacts of tearing a stream down, not verdicts about
+// the fetch itself. When our own AbortController caused the teardown, these
+// are all reported as EABORT_SIGNAL so callers can tell "cancelled by the
+// abort" apart from "actually failed" (e.g. E404 racing the abort).
+const TEARDOWN_CODES = new Set(['EABORT', 'FETCH_ABORTED', 'ERR_STREAM_PREMATURE_CLOSE']);
+
 // pacote v21 API: tarball.stream(spec, streamHandler, opts)
 // The handler receives a Node stream and must return a Promise.
 // This is a breaking change from earlier pacote versions where
@@ -24,25 +34,27 @@ async function fetchWithRetry(spec, opts, onChunk, onRetry) {
   let attempt = 0;
 
   while (true) {
-    if (signal?.aborted) throw Object.assign(new Error('fetch aborted'), { code: 'EABORT_SIGNAL' });
+    if (signal?.aborted) throw abortError();
 
     try {
       await pacote.tarball.stream(spec, (stream) => {
-        // Destroy the stream immediately when the AbortController fires, so
-        // in-flight streams don't keep pumping data into the aggregator after
-        // a required-package failure triggers ac.abort().
-        const onAbortSignal = () => stream.destroy();
-        if (signal) {
-          if (signal.aborted) {
-            stream.destroy();
-          } else {
-            signal.addEventListener('abort', onAbortSignal, { once: true });
-          }
-        }
-
         return new Promise((resolve, reject) => {
           let ended = false;
+          // On abort, destroying the stream is necessary (stop pumping bytes
+          // into the aggregator) but NOT sufficient: a destroyed minipass
+          // stream may emit no further events, leaving this promise — and the
+          // install's Promise.all — pending forever. The event loop then
+          // drains and node exits 0 mid-install. Reject explicitly so every
+          // aborted fetch settles.
+          const onAbortSignal = () => {
+            stream.destroy();
+            reject(abortError());
+          };
           const cleanup = () => { if (signal) signal.removeEventListener('abort', onAbortSignal); };
+          if (signal) {
+            if (signal.aborted) { onAbortSignal(); return; }
+            signal.addEventListener('abort', onAbortSignal, { once: true });
+          }
 
           stream.on('data', chunk => {
             onChunk(chunk.length);
@@ -67,7 +79,15 @@ async function fetchWithRetry(spec, opts, onChunk, onRetry) {
 
       return;
     } catch (err) {
-      if (signal?.aborted) throw err;
+      if (signal?.aborted) {
+        // Our abort caused this teardown — normalize so the caller can
+        // attribute it to the abort rather than to the package.
+        if (TEARDOWN_CODES.has(err.code) || err.name === 'AbortError' || err.code === 'EABORT_SIGNAL') {
+          throw abortError();
+        }
+        // A genuine failure (e.g. E404) that raced the abort — preserve it.
+        throw err;
+      }
       const maxRetries = opts.fetchRetries ?? 2;
       if (isTransient(err) && attempt < maxRetries) {
         attempt++;
