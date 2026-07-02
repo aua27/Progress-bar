@@ -43,18 +43,24 @@ class ArboristAdapter {
     }
     // Deduplicate by resolved URL: the same tarball can appear at multiple
     // depths in the tree (hoisted and nested peers). We only need one fetch per URL.
-    const seen = new Set();
-    const specs = [];
+    // `optional` is a property of the dependency edge, not the tarball. A package
+    // reachable through both a required and an optional edge must be treated as
+    // required — otherwise its fetch failure is swallowed instead of aborting the
+    // install. AND the flag across every occurrence of the same resolved URL.
+    const byResolved = new Map();
     for (const node of this._idealTree.inventory.values()) {
       if (node.isRoot) continue;
       if (!node.resolved) continue;
-      if (seen.has(node.resolved)) continue;
-      seen.add(node.resolved);
-      specs.push({
+      const existing = byResolved.get(node.resolved);
+      if (existing) {
+        existing.optional = existing.optional && !!node.optional;
+        continue;
+      }
+      byResolved.set(node.resolved, {
         name: node.name,
         version: node.version,
         spec: `${node.name}@${node.version}`,
-        key: node.resolved,   // unique identifier; resolved is already deduped above
+        key: node.resolved,   // unique identifier; resolved is deduped by the map
         resolved: node.resolved,
         integrity: node.integrity,
         optional: !!node.optional,
@@ -63,7 +69,7 @@ class ArboristAdapter {
         distSize: node.package?.dist?.size ?? null,
       });
     }
-    return specs;
+    return [...byResolved.values()];
   }
 
   get pacoteOpts() {

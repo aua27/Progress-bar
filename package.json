@@ -6,7 +6,8 @@
     "npmbar": "bin/npmbar.js"
   },
   "scripts": {
-    "test": "node test/accounting.js && node test/cli.js",
+    "test": "node test/accounting.js && node test/adapters.js && node test/cli.js",
+    "test:adapters": "node test/adapters.js",
     "test:correctness": "node test/correctness.js",
     "test:perf": "node test/perf.js",
     "test:accounting": "node test/accounting.js",
