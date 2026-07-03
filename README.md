@@ -3,7 +3,7 @@
 [![CI](https://github.com/aua27/Progress-bar/actions/workflows/ci.yml/badge.svg)](https://github.com/aua27/Progress-bar/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-`npm install` with accurate download progress bars — bytes downloaded, transfer speed, ETA — at less than 3% overhead vs plain `npm install`.
+`npm install` with accurate download progress bars — bytes downloaded, transfer speed, ETA — at less than 3% warm-cache overhead vs plain `npm install`.
 
 npm's own progress bar was removed because it caused 30–50% slowdown. `npmbar` decouples rendering from byte counting, so progress is reported without competing with the install itself for the I/O event loop.
 
@@ -125,17 +125,19 @@ The performance suite times interleaved cold- and warm-cache install pairs (10 r
 Overhead is measured in separate regimes, because the cost of the progress bar depends on how it is exercised:
 
 - **Piped** (warm and cold) — stdout is piped rather than attached to a terminal, so npmbar reports through plain log lines and the live render loop is suppressed — the same fallback npm uses when its own stdout is not a terminal. This isolates the resolve + cache-probe + byte-accounting overhead. *Warm* is a repeat install where every tarball is already cached; *cold* is a first install where every tarball is downloaded (network-dominated, so the accounting overhead is proportionally small).
-- **PTY, rendering active** (warm) — a repeat install run inside a real pseudo-terminal, so the full render path (the 10fps `setInterval` loop, chalk, and ANSI writes) executes live during timing. This is the only regime that measures the rendering cost itself — the thing npm removed its own bar over. Both tools are wrapped in an identical pseudo-terminal so the comparison stays like-for-like.
+- **PTY, rendering active** (first install) — an install with a fresh cache, run inside a real pseudo-terminal, so tarballs actually download and the full render path (the 10fps `setInterval` loop, chalk, and ANSI writes) executes live during timing. (A warm-cache install has nothing to download, so the bar never engages — only a first install exercises rendering.) This is the only regime that measures the rendering cost itself — the thing npm removed its own bar over. Both tools are wrapped in an identical pseudo-terminal so the comparison stays like-for-like.
 
 | Regime | Registry | n | Median overhead | npmbar median | npm median |
 |---|---|---|---|---|---|
 | Warm cache, piped | registry.npmjs.org | 10 | **−2.3%** | 2749 ms | 2814 ms |
 | Cold cache, piped | local verdaccio proxy | 10 | **−2.3%** | 8625 ms | 8828 ms |
-| Warm cache, PTY (rendering active) | local verdaccio | — | *not yet measured* | — | — |
+| First install (fresh cache), PTY, rendering active | local verdaccio | 10 | **+21.3%** | 3599 ms | 2966 ms |
 
 A negative value indicates npmbar completed faster than npm in that measurement session. Differences of this size are within run-to-run variance; the supported conclusion is that npmbar's overhead is below the 3% threshold, not that it is faster than npm.
 
-The PTY (rendering-active) regime is benchmarked by the continuous-integration perf workflow but has not yet produced a recorded median on the reference machine; that row will be filled from the first workflow run. Until then, the < 3% claim is verified for the piped regimes only.
+The PTY row was measured 2026-07-03 by the CI perf workflow on a GitHub-hosted Ubuntu runner (Node 22). It exceeds the 3% threshold — but the excess is not the render loop: on the same runner, the same fresh-cache workload with output piped (rendering suppressed) measured +16.5%, and npmbar's own median was unchanged by turning rendering on (3599 ms PTY vs 3613 ms piped). Rendering adds no measurable cost. The gap is in npmbar's first-install path, which is environment-dependent (−2.3% on the reference machine above, +16–21% on CI-runner hardware) and is being worked on.
+
+The < 3% claim is therefore currently verified for **warm-cache installs** — the everyday case of repeated installs — and holds in every measured environment. First-install overhead exceeds the threshold on CI-class hardware until the first-install gap is closed.
 
 Environment for the piped rows: Windows 11, Node v24.1.0, npm 11.3.0, 31-dependency tree, measured 2026-06-11. Per-run overhead in the warm regime ranged from −9.1% to +3.7%.
 
