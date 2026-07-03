@@ -122,14 +122,22 @@ The performance suite times interleaved cold- and warm-cache install pairs (10 r
 
 ### Measured overhead (v0.9.0)
 
+Overhead is measured in separate regimes, because the cost of the progress bar depends on how it is exercised:
+
+- **Piped** (warm and cold) — stdout is piped rather than attached to a terminal, so npmbar reports through plain log lines and the live render loop is suppressed — the same fallback npm uses when its own stdout is not a terminal. This isolates the resolve + cache-probe + byte-accounting overhead. *Warm* is a repeat install where every tarball is already cached; *cold* is a first install where every tarball is downloaded (network-dominated, so the accounting overhead is proportionally small).
+- **PTY, rendering active** (warm) — a repeat install run inside a real pseudo-terminal, so the full render path (the 10fps `setInterval` loop, chalk, and ANSI writes) executes live during timing. This is the only regime that measures the rendering cost itself — the thing npm removed its own bar over. Both tools are wrapped in an identical pseudo-terminal so the comparison stays like-for-like.
+
 | Regime | Registry | n | Median overhead | npmbar median | npm median |
 |---|---|---|---|---|---|
-| Warm cache | registry.npmjs.org | 10 | **−2.3%** | 2749 ms | 2814 ms |
-| Cold cache | local verdaccio proxy | 10 | **−2.3%** | 8625 ms | 8828 ms |
+| Warm cache, piped | registry.npmjs.org | 10 | **−2.3%** | 2749 ms | 2814 ms |
+| Cold cache, piped | local verdaccio proxy | 10 | **−2.3%** | 8625 ms | 8828 ms |
+| Warm cache, PTY (rendering active) | local verdaccio | — | *not yet measured* | — | — |
 
 A negative value indicates npmbar completed faster than npm in that measurement session. Differences of this size are within run-to-run variance; the supported conclusion is that npmbar's overhead is below the 3% threshold, not that it is faster than npm.
 
-Environment: Windows 11, Node v24.1.0, npm 11.3.0, 31-dependency tree, measured 2026-06-11. Per-run overhead in the warm regime ranged from −9.1% to +3.7%.
+The PTY (rendering-active) regime is benchmarked by the continuous-integration perf workflow but has not yet produced a recorded median on the reference machine; that row will be filled from the first workflow run. Until then, the < 3% claim is verified for the piped regimes only.
+
+Environment for the piped rows: Windows 11, Node v24.1.0, npm 11.3.0, 31-dependency tree, measured 2026-06-11. Per-run overhead in the warm regime ranged from −9.1% to +3.7%.
 
 ```sh
 npm test                  # accounting + CLI unit tests
