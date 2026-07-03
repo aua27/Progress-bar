@@ -53,6 +53,9 @@ jobs:
       # on machine noise, not on a real regression. Warm is the core constraint
       # (where users live) and is the hard gate. This is a deliberate, documented
       # decision, not a quiet loosening: the number stays visible every run.
+      # Revisit trigger (decided 2026-07-03): if two consecutive calm sessions
+      # or CI runs show cold > 3% while warm is unchanged, treat it as a real
+      # regression and re-promote the cold gate by dropping --cold-advisory.
       - name: Full perf benchmark (required)
         id: perf_full
         run: |
