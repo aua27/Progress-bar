@@ -61,23 +61,48 @@ async function probeViaManifest(spec, opts) {
   }
 }
 
+// Each manifest fallback reads and parses cache index entries (~10ms, fs
+// threadpool + CPU). A tree with many no-integrity specs (git/file deps)
+// fanning them all out at once can stall the probe phase; fs.access probes
+// stay unbounded because a missing-file stat is microseconds.
+const MANIFEST_CONCURRENCY = 8;
+
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 // Fast probe: existence check on the cacache tarball blob path computed from
 // the integrity hash. Falls back to pacote.manifest only when integrity is
 // unavailable (rare for arborist v9 idealTree nodes).
 async function probeAll(specs, opts) {
   const cacheDir = resolveCacheDir(opts);
-  const results = await Promise.all(specs.map(async (s) => {
+  const results = new Array(specs.length);
+  const fallbackIndexes = [];
+  await Promise.all(specs.map(async (s, i) => {
     const tarPath = tarballCachePath(cacheDir, s.integrity);
-    if (tarPath) {
-      try {
-        await fs.promises.access(tarPath, fs.constants.F_OK);
-        return true;
-      } catch {
-        return false;
-      }
+    if (!tarPath) {
+      fallbackIndexes.push(i);
+      return;
     }
-    return probeViaManifest(s.spec, opts);
+    try {
+      await fs.promises.access(tarPath, fs.constants.F_OK);
+      results[i] = true;
+    } catch {
+      results[i] = false;
+    }
   }));
+  await mapLimit(fallbackIndexes, MANIFEST_CONCURRENCY, async (i) => {
+    results[i] = await probeViaManifest(specs[i].spec, opts);
+  });
 
   const cachedSpecs = new Set();
   for (let i = 0; i < specs.length; i++) {
@@ -89,4 +114,4 @@ async function probeAll(specs, opts) {
   };
 }
 
-module.exports = { probeAll, tarballCachePath, resolveCacheDir };
+module.exports = { probeAll, tarballCachePath, resolveCacheDir, mapLimit };
