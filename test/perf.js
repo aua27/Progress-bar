@@ -204,7 +204,12 @@ function killVerdaccio() {
       // shell:true wraps the real process; kill the whole tree.
       execSync(`taskkill /pid ${verdaccioChild.pid} /T /F`, { stdio: 'ignore' });
     } else {
-      verdaccioChild.kill('SIGTERM');
+      // shell:true + npx means verdaccio is a grandchild: kill(child) only
+      // reaps the sh wrapper, verdaccio survives holding our stdout/stderr
+      // pipes and the event loop never drains (observed as a 90-minute hang
+      // on ubuntu runners). detached:true made the child a group leader —
+      // signal the whole group (negative pid).
+      process.kill(-verdaccioChild.pid, 'SIGTERM');
     }
   } catch { /* already gone */ }
   verdaccioChild = null;
@@ -269,6 +274,9 @@ async function ensureRegistry() {
       shell: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      // POSIX: own process group so killVerdaccio can signal the whole
+      // sh → npx → verdaccio tree at once (see killVerdaccio).
+      detached: process.platform !== 'win32',
     });
   } catch (err) {
     console.error(`✖  Failed to spawn verdaccio: ${err.message}`);
@@ -702,7 +710,12 @@ async function main() {
   return runStandard(opts);
 }
 
-main().catch(err => {
+main().then(() => {
+  // Exit explicitly: the auto-spawned verdaccio's pipes (and any other stray
+  // handle) must not keep the event loop alive after the verdict is printed.
+  cleanupVerdaccio();
+  process.exit(process.exitCode || 0);
+}, err => {
   console.error(err.stack || err.message);
   cleanupVerdaccio();
   process.exit(1);
