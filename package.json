@@ -1,6 +1,6 @@
 {
   "name": "npmbar",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "npm install with accurate download progress bars",
   "bin": {
     "npmbar": "bin/npmbar.js"
