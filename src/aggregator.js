@@ -16,7 +16,6 @@ class DownloadAggregator {
       status: 'pending',
       attempt: 0,
       bytes: 0,
-      committed: false,
       distSize,
       error: null,
     });
@@ -42,7 +41,6 @@ class DownloadAggregator {
   onEnd(spec, { cached = false } = {}) {
     const s = this._get(spec);
     if (TERMINAL.has(s.status)) return;
-    s.committed = true;
     s.status = cached ? 'cached' : 'done';
     // Track significant distSize mismatches for diagnostic reporting.
     // A mismatch means the progress bar's Tier 1 percentage was inaccurate
@@ -66,7 +64,6 @@ class DownloadAggregator {
     if (TERMINAL.has(s.status)) return;
     s.attempt++;
     s.bytes = 0;
-    s.committed = false;
     s.status = 'retrying';
   }
 
@@ -75,7 +72,6 @@ class DownloadAggregator {
     if (TERMINAL.has(s.status)) return;
     s.bytes = 0;
     s.distSize = null;  // exclude from totalSize so aborted packages don't freeze Tier 1
-    s.committed = false;
     s.status = 'aborted';
   }
 
