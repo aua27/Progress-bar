@@ -18,6 +18,23 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    name: lint (eslint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
@@ -37,7 +54,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Runs test/accounting.js + test/cli.js (see package.json "test" script)
+      # Runs accounting, adapters, cache-probe, cli, and integration suites
+      # (see package.json "test" script).
       - name: Run tests
         run: npm test
 

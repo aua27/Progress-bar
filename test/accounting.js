@@ -205,6 +205,7 @@ test('onChunk after retry exits retrying status — counter no longer inflated',
 
 // --- Renderer polish (G8) ---------------------------------------------------
 
+// eslint-disable-next-line no-control-regex -- matching the ESC control byte is the point
 const ANSI_RE = /\x1b\[[0-9;?]*[A-Za-z]/g;
 const stripAnsi = s => s.replace(ANSI_RE, '');
 

@@ -6,7 +6,9 @@
     "npmbar": "bin/npmbar.js"
   },
   "scripts": {
-    "test": "node test/accounting.js && node test/adapters.js && node test/cli.js && node test/integration.js",
+    "test": "node test/accounting.js && node test/adapters.js && node test/cache-probe.js && node test/cli.js && node test/integration.js",
+    "lint": "eslint .",
+    "test:cache-probe": "node test/cache-probe.js",
     "test:adapters": "node test/adapters.js",
     "test:integration": "node test/integration.js",
     "test:correctness": "node test/correctness.js",
@@ -27,6 +29,12 @@
     "commander": "^13.1.0",
     "pacote": "^21.5.0",
     "semver": "^7.7.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^16.0.0",
+    "ssri": "^13.0.1"
   },
   "repository": {
     "type": "git",

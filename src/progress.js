@@ -11,6 +11,7 @@ const FALLBACK_COLUMNS = 80;
 
 // Matches CSI escape sequences (SGR colors, cursor movement). Our output only
 // ever contains chalk SGR codes, so this is sufficient for width measurement.
+// eslint-disable-next-line no-control-regex -- matching the ESC control byte is the point
 const ANSI_RE = /\x1b\[[0-9;?]*[A-Za-z]/g;
 
 function stripAnsi(str) {
