@@ -114,4 +114,4 @@ async function probeAll(specs, opts) {
   };
 }
 
-module.exports = { probeAll, tarballCachePath, resolveCacheDir, mapLimit };
+module.exports = { probeAll, tarballCachePath, resolveCacheDir, cacacheRoot, mapLimit };

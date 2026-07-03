@@ -3,8 +3,10 @@
 
 const { satisfies } = require('semver');
 
-if (!satisfies(process.version, '>=18.0.0')) {
-  console.error(`npmbar: requires Node.js >=18, found ${process.version}`);
+// Floor set by @npmcli/arborist@9 / pacote@21 / ini@6 — keep in sync with
+// package.json "engines" and the deps' own engines when bumping majors.
+if (!satisfies(process.version, '^20.17.0 || >=22.9.0')) {
+  console.error(`npmbar: requires Node.js ^20.17.0 || >=22.9.0, found ${process.version}`);
   process.exit(1);
 }
 

@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('assert');
+const os = require('os');
+const path = require('path');
 const ArboristAdapter = require('../src/adapters/arborist');
 
 let passed = 0;
@@ -111,6 +113,57 @@ test('dedup: first occurrence supplies spec fields (name, integrity, distSize)',
   assert.strictEqual(specs[0].integrity, 'sha512-first');
   assert.strictEqual(specs[0].distSize, 42);
   assert.strictEqual(specs[0].optional, false, 'optional must still be ANDed');
+});
+
+// --- Registry + cache bridging (the config standalone arborist doesn't load) ---
+
+// Snapshot/restore the two env vars these tests mutate so they can't leak.
+function withEnv(vars, fn) {
+  const keys = ['npm_config_registry', 'npm_config_cache'];
+  const prev = {};
+  for (const k of keys) prev[k] = process.env[k];
+  for (const k of keys) {
+    if (vars[k] === undefined) delete process.env[k];
+    else process.env[k] = vars[k];
+  }
+  try {
+    return fn();
+  } finally {
+    for (const k of keys) {
+      if (prev[k] === undefined) delete process.env[k];
+      else process.env[k] = prev[k];
+    }
+  }
+}
+
+test('registry: --registry flag wins over npm_config_registry env', () => {
+  withEnv({ npm_config_registry: 'https://env.example/', npm_config_cache: undefined }, () => {
+    const adapter = new ArboristAdapter({ path: __dirname, registry: 'https://flag.example/' });
+    assert.strictEqual(adapter.opts.registry, 'https://flag.example/');
+  });
+});
+
+test('registry: npm_config_registry env is honored when no flag', () => {
+  withEnv({ npm_config_registry: 'http://localhost:4873/', npm_config_cache: undefined }, () => {
+    const adapter = new ArboristAdapter({ path: __dirname });
+    assert.strictEqual(adapter.opts.registry, 'http://localhost:4873/');
+  });
+});
+
+test('cache: npm_config_cache env is normalized to the _cacache root', () => {
+  const raw = path.join(os.tmpdir(), 'npmbar-cache-test');
+  withEnv({ npm_config_cache: raw, npm_config_registry: undefined }, () => {
+    const adapter = new ArboristAdapter({ path: __dirname });
+    assert.strictEqual(adapter.opts.cache, path.join(raw, '_cacache'));
+  });
+});
+
+test('cache: a path already ending in _cacache is not double-appended', () => {
+  const withCacache = path.join(os.tmpdir(), 'npmbar-cache-test', '_cacache');
+  withEnv({ npm_config_cache: withCacache, npm_config_registry: undefined }, () => {
+    const adapter = new ArboristAdapter({ path: __dirname });
+    assert.strictEqual(adapter.opts.cache, withCacache);
+  });
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

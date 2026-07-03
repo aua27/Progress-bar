@@ -6,10 +6,11 @@
     "npmbar": "bin/npmbar.js"
   },
   "scripts": {
-    "test": "node test/accounting.js && node test/adapters.js && node test/cache-probe.js && node test/cli.js && node test/integration.js",
+    "test": "node test/accounting.js && node test/adapters.js && node test/cache-probe.js && node test/npmrc.js && node test/cli.js && node test/integration.js",
     "lint": "eslint .",
     "test:cache-probe": "node test/cache-probe.js",
     "test:adapters": "node test/adapters.js",
+    "test:npmrc": "node test/npmrc.js",
     "test:integration": "node test/integration.js",
     "test:correctness": "node test/correctness.js",
     "test:perf": "node test/perf.js",
@@ -17,7 +18,7 @@
     "test:cli": "node test/cli.js"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "^20.17.0 || >=22.9.0"
   },
   "files": [
     "bin",
@@ -27,6 +28,7 @@
     "@npmcli/arborist": "^9.4.3",
     "chalk": "^4.1.2",
     "commander": "^13.1.0",
+    "ini": "^6.0.0",
     "pacote": "^21.5.0",
     "semver": "^7.7.2"
   },

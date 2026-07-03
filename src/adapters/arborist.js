@@ -1,6 +1,8 @@
 'use strict';
 
 const Arborist = require('@npmcli/arborist');
+const { cacacheRoot } = require('../cache-probe');
+const { resolveRegistry } = require('../npmrc');
 
 class ArboristAdapter {
   constructor(opts = {}) {
@@ -11,6 +13,23 @@ class ArboristAdapter {
     if (!resolvedOpts.cache) {
       const envCache = process.env.npm_config_cache || process.env.NPM_CONFIG_CACHE;
       if (envCache) resolvedOpts.cache = envCache;
+    }
+    // arborist uses `options.cache` verbatim as the cacache ROOT, whereas npm's
+    // own `cache` config points at the PARENT and npm appends `_cacache` before
+    // handing it to arborist. Mirror npm: normalize to `<cache>/_cacache` so
+    // npmbar and npm share one cache dir, and so it matches where cache-probe
+    // (which applies the same normalization) actually looks.
+    if (resolvedOpts.cache) {
+      resolvedOpts.cache = cacacheRoot(resolvedOpts.cache);
+    }
+    // Standalone arborist runs no npm config loader, so it ignores
+    // npm_config_registry and .npmrc — it silently defaults to npmjs.org even
+    // when the user (or our benchmark) configured a private/local registry.
+    // Bridge it here, mirroring the cache bridge above. The --registry flag,
+    // if given, is already on resolvedOpts and wins (see resolveRegistry).
+    if (!resolvedOpts.registry) {
+      const registry = resolveRegistry(resolvedOpts.registry);
+      if (registry) resolvedOpts.registry = registry;
     }
     this.opts = resolvedOpts;
     this.arb = new Arborist(resolvedOpts);
@@ -73,8 +92,10 @@ class ArboristAdapter {
   }
 
   get pacoteOpts() {
-    // Arborist loads .npmrc, auth tokens, registry, proxy etc. during construction.
-    // Expose its resolved options so our explicit pacote calls use the same config.
+    // Standalone arborist does NOT load npm config (.npmrc, registry, cache) —
+    // the constructor above bridges those in. Expose arborist's resolved options
+    // so our explicit pacote calls (probe, download, re-verify) use the same
+    // registry and cache as reify().
     return this.arb.options || {};
   }
 

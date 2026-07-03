@@ -67,6 +67,29 @@ function runNpmbar(args, { proj, cache }, timeout = 60000) {
   });
 }
 
+// Like runNpmbar but injects extra env vars and passes NO --registry flag —
+// used to prove npmbar honors npm_config_registry from the environment.
+function runNpmbarEnv(args, { proj, cache }, extraEnv, timeout = 60000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [BIN, ...args, '--prefix', proj], {
+      env: { ...process.env, npm_config_cache: cache, NO_COLOR: '1', ...extraEnv },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', d => { stdout += d; });
+    child.stderr.on('data', d => { stderr += d; });
+    const killer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`npmbar timed out after ${timeout}ms\nstdout: ${stdout}\nstderr: ${stderr}`));
+    }, timeout);
+    child.on('error', err => { clearTimeout(killer); reject(err); });
+    child.on('close', status => {
+      clearTimeout(killer);
+      resolve({ status, stdout, stderr });
+    });
+  });
+}
+
 const MIXED_OPTIONALITY = {
   'pkg-x': { '1.0.0': {}, '2.0.0': {} },
   'pkg-a': { '1.0.0': { dependencies: { 'pkg-x': '1.0.0' } } },
@@ -219,6 +242,25 @@ async function main() {
       withRetryHits = tarHits(registry);
       assert.ok(withRetryHits > 1, `--fetch-retries 1 must retry (>1 attempt), got ${withRetryHits}`);
       assert.ok(withRetryHits > noRetryHits, `--fetch-retries 1 (${withRetryHits}) must attempt more than --fetch-retries 0 (${noRetryHits})`);
+    });
+  });
+
+  // Registry from npm_config_registry (env), NOT the --registry flag. This is
+  // the §0 correctness bug: standalone arborist ignores the env var and silently
+  // hits registry.npmjs.org. Proof it now routes to our mock: the install
+  // succeeds offline (npmjs is unreachable from the runner is not assumed —
+  // instead we prove the MOCK received the traffic) and the tree is populated.
+  await test('npm_config_registry env (no --registry flag) routes to the configured registry', async () => {
+    await withRegistry({ packages: MIXED_OPTIONALITY }, async (url, dirs, registry) => {
+      const r = await runNpmbarEnv(INSTALL_ARGS, dirs, { npm_config_registry: url });
+      assert.strictEqual(r.status, 0, `expected exit 0, got ${r.status}\nstderr: ${r.stderr}\nstdout: ${r.stdout}`);
+      assert.ok(fs.existsSync(path.join(dirs.proj, 'node_modules/pkg-x/package.json')), 'pkg-x not installed');
+      // The mock must have served the traffic — otherwise the env var was ignored.
+      assert.ok(registry.requests.length > 0, 'mock registry received no requests: env registry was ignored');
+      assert.ok(
+        registry.requests.some(u => /pkg-x/.test(u)),
+        `mock registry never saw pkg-x; requests: ${registry.requests.join(', ')}`,
+      );
     });
   });
 
