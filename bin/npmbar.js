@@ -76,6 +76,12 @@ program
       console.error(`npmbar: invalid package name '${badArg}' — did you mean to pass this as a flag before the package list?`);
       process.exit(1);
     }
+    // An empty spec would be coerced downstream into the literal package name
+    // "undefined" (npm 11 has the same quirk) — reject it before resolve.
+    if (packages.some(p => !p.trim())) {
+      console.error('npmbar: invalid package argument: name cannot be empty');
+      process.exit(1);
+    }
     await installCommand(packages, opts).catch(err => {
       console.error(`npmbar: ${err.message}`);
       process.exit(1);

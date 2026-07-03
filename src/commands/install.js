@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const path = require('path');
 const chalk = require('chalk');
 const ArboristAdapter = require('../adapters/arborist');
 const { getArboristOpts } = require('../adapters/config');
@@ -70,6 +71,18 @@ function validateFlags(flags) {
       process.exit(1);
     }
   }
+
+  // A --prefix pointing at an existing non-directory otherwise fails deep in
+  // reify with a raw EEXIST — reject it up front with a message that names
+  // the flag. A missing path is fine (arborist creates it, npm parity).
+  if (flags.prefix) {
+    let st = null;
+    try { st = fs.statSync(path.resolve(flags.prefix)); } catch { /* missing is fine */ }
+    if (st && !st.isDirectory()) {
+      console.error(`npmbar: invalid --prefix '${flags.prefix}': path exists and is not a directory`);
+      process.exit(1);
+    }
+  }
 }
 
 // fetchRetryMintimeout -> fetch-retry-mintimeout
@@ -103,7 +116,6 @@ async function install(packages, flags) {
   const arboristOpts = getArboristOpts(flags);
 
   // Step 1: Build ideal tree — animated spinner since this can take seconds.
-  const arb = new ArboristAdapter(arboristOpts);
   let spinnerFrame = 0;
   const spinnerTimer = showProgress
     ? setInterval(() => {
@@ -111,8 +123,13 @@ async function install(packages, flags) {
       }, 100)
     : null;
 
+  // Constructor errors (e.g. option combinations arborist itself rejects) get
+  // the same "failed to resolve" wrapper as buildIdealTree errors — outside
+  // the try they'd escape to the generic top-level handler with a bare message.
+  let arb;
   let pkgSpecs;
   try {
+    arb = new ArboristAdapter(arboristOpts);
     await arb.buildIdealTree(packages);
     pkgSpecs = arb.extractPackageSpecs();
   } catch (err) {

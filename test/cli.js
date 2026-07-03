@@ -313,5 +313,71 @@ test('CI=1 dry-run install emits no ANSI escapes on stdout', () => {
   assert.ok(!result.stdout.includes('\r'), `stdout contains carriage returns (spinner leak): ${JSON.stringify(result.stdout.slice(0, 200))}`);
 });
 
+// BUG-012: an empty package spec would otherwise resolve the literal package
+// named "undefined" (npm 11 quirk) — npmbar rejects it before resolve.
+test('empty package argument exits 1 with a clear message', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', ''], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes('name cannot be empty'),
+    `expected stderr to reject the empty package name, got: ${result.stderr}`,
+  );
+});
+
+test('whitespace-only package argument exits 1', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', '   '], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes('name cannot be empty'),
+    `expected stderr to reject the whitespace package name, got: ${result.stderr}`,
+  );
+});
+
+// BUG-013: --prefix at an existing file previously failed deep in reify with
+// a raw EEXIST — must now be rejected up front, naming the flag.
+test('--prefix pointing at an existing file exits 1 before resolve', () => {
+  const os = require('os');
+  const fs = require('fs');
+  const filePath = path.join(os.tmpdir(), `npmbar-prefix-file-${process.pid}`);
+  fs.writeFileSync(filePath, 'not a directory');
+  try {
+    const result = spawnSync(process.execPath, [BIN, 'install', 'left-pad', '--prefix', filePath, '--dry-run'], {
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+    assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+    assert.ok(
+      result.stderr.includes('invalid --prefix'),
+      `expected stderr to mention invalid --prefix, got: ${result.stderr}`,
+    );
+    assert.ok(
+      !result.stderr.includes('EEXIST'),
+      `raw EEXIST leaked to the user: ${result.stderr}`,
+    );
+  } finally {
+    fs.rmSync(filePath, { force: true });
+  }
+});
+
+// BUG-014: arborist-constructor errors must get the same "failed to resolve"
+// wrapper as buildIdealTree errors, not escape to the generic handler.
+test('arborist constructor error is wrapped as "failed to resolve packages"', () => {
+  const result = spawnSync(process.execPath, [BIN, 'install', 'left-pad', '--global', '--workspace', 'foo'], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  assert.strictEqual(result.status, 1, `expected exit 1, got ${result.status}`);
+  assert.ok(
+    result.stderr.includes('failed to resolve packages'),
+    `expected the resolve-failure wrapper, got: ${result.stderr}`,
+  );
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
