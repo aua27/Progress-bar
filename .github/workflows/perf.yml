@@ -3,7 +3,7 @@
 # Runner note: benchmark numbers are ONLY comparable within the same runner
 # class (ubuntu-latest, currently 4-vCPU hosted runners). Do not compare
 # absolute timings across runner classes, OSes, or self-hosted hardware —
-# only the relative npmx-vs-npm overhead ratio from a single run is meaningful.
+# only the relative npmbar-vs-npm overhead ratio from a single run is meaningful.
 #
 # Triggers:
 # - weekly schedule (drift detection)
@@ -43,23 +43,44 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Warm-cache benchmark against registry.npmjs.org. Asserts the
-      # (npmx_median - npm_median) / npm_median < 0.03 budget and exits 1
-      # on breach.
-      - name: Quick perf benchmark (required)
-        id: perf_quick
+      # REQUIRED GATE: the rigorous benchmark. perf.js runs n=10 against a local
+      # verdaccio (auto-spawned) — network-local and low-variance — and asserts
+      # the (npmbar_median - npm_median) / npm_median < 0.03 warm budget, exiting
+      # 1 on breach. --cold-advisory: the cold regime is still measured and
+      # printed, but a cold breach WARNS instead of failing the job. Cold is
+      # network/IO-variance-dominated and has been reproduced breaching on
+      # unmodified baseline HEAD (A/B via git stash) — gating on it would go red
+      # on machine noise, not on a real regression. Warm is the core constraint
+      # (where users live) and is the hard gate. This is a deliberate, documented
+      # decision, not a quiet loosening: the number stays visible every run.
+      - name: Full perf benchmark (required)
+        id: perf_full
         run: |
-          node test/perf-quick.js 2>&1 | tee perf-quick-output.txt
+          node test/perf.js --cold-advisory 2>&1 | tee perf-full-output.txt
           exit ${PIPESTATUS[0]}
 
-      # perf.js requires a verdaccio registry on localhost:4873; another work
-      # stream is adding auto-spawn — once that lands, remove
-      # continue-on-error and make this step required.
-      - name: Full perf benchmark (advisory)
-        id: perf_full
+      # REQUIRED GATE: rendering. Every piped benchmark above executes the render
+      # loop ZERO times (src/progress.js gates on stdout.isTTY), so they prove
+      # accounting overhead only — not that the redraw loop npm removed its bar
+      # over is cheap. --tty wraps BOTH tools in a real PTY (script(1)) so
+      # npmbar's render loop actually runs, verifies rendering happened (asserts
+      # the cursor-hide escape in captured output), and enforces the same <3%
+      # budget (regime=warm-tty).
+      - name: PTY rendering benchmark (required)
+        id: perf_tty
+        run: |
+          node test/perf.js --tty 2>&1 | tee perf-tty-output.txt
+          exit ${PIPESTATUS[0]}
+
+      # ADVISORY: real-registry sanity signal. perf-quick.js is n=3 against the
+      # public registry — CLAUDE.md itself calls n<10 preliminary — so it is kept
+      # as a smoke check but no longer gates (the verdaccio perf.js above is the
+      # authoritative required gate).
+      - name: Quick perf benchmark (advisory)
+        id: perf_quick
         continue-on-error: true
         run: |
-          node test/perf.js 2>&1 | tee perf-full-output.txt
+          node test/perf-quick.js 2>&1 | tee perf-quick-output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Assemble benchmark report
@@ -70,16 +91,22 @@ jobs:
             echo
             echo "Runner: ubuntu-latest (numbers only comparable within this runner class)"
             echo
-            echo "### perf-quick (warm cache, <3% budget — required)"
-            echo
-            echo '```'
-            cat perf-quick-output.txt 2>/dev/null || echo "(no output captured)"
-            echo '```'
-            echo
-            echo "### perf (verdaccio, advisory until auto-spawn lands)"
+            echo "### perf (verdaccio, warm <3% budget — REQUIRED; cold advisory)"
             echo
             echo '```'
             cat perf-full-output.txt 2>/dev/null || echo "(no output captured)"
+            echo '```'
+            echo
+            echo "### perf --tty (PTY rendering, warm-tty <3% budget — REQUIRED)"
+            echo
+            echo '```'
+            cat perf-tty-output.txt 2>/dev/null || echo "(no output captured)"
+            echo '```'
+            echo
+            echo "### perf-quick (public registry, n=3 — advisory)"
+            echo
+            echo '```'
+            cat perf-quick-output.txt 2>/dev/null || echo "(no output captured)"
             echo '```'
           } > perf-report.md
           cat perf-report.md >> "$GITHUB_STEP_SUMMARY"
