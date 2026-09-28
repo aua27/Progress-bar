@@ -13,7 +13,7 @@ npm's own progress bar was removed because it caused 30–50% slowdown. `npmbar`
 npm install -g npmbar
 ```
 
-Requires Node.js 18 or later.
+Requires Node.js ^20.17.0 or >=22.9.0.
 
 ## Usage
 
